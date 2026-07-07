@@ -1,0 +1,9 @@
+# Context7 Integration
+
+When the user asks about:
+- Library APIs or documentation
+- Framework setup or configuration
+- Code examples for external packages
+- How to use a specific library feature
+
+Automatically use Context7 MCP to fetch current documentation. Don't rely on training data for library-specific code.
