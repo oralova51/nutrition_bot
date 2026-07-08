@@ -1,0 +1,9 @@
+---
+description: Правила работы cо стеком
+alwaysApply: true
+---
+- Node.js, TypeScript
+- База данных: Supabase (PostgreSQL) через Sequelize ORM (в roadmap шаг 1.3 «PostgreSQL» = именно Supabase Postgres)
+- Telegram Bot API — канал доставки (см. SA_SUMMARY §8)
+- Планировщик задач для напоминаний (node-cron / BullMQ) — выбрать на этапе 4.1
+- Применяй последние стабильные версии пакетов (без beta)
