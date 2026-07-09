@@ -3,13 +3,29 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { URL } from 'node:url';
 import type { Logger } from 'pino';
+import { requireAdminAuth } from './admin-auth.js';
+import { resolveAdminApiToken, resolveBotUsername } from './config.js';
 import { getHealthStatus } from './health.js';
+import { ApiError, sendApiError, sendJson } from './http.js';
+import { findRoute, type RouteDefinition } from './router.js';
+import { createEnrollmentLinkRoutes } from './routes/enrollment-links.js';
 
-const HEALTH_PATH = '/api/v1/health';
+const API_PREFIX = '/api/v1';
+const HEALTH_PATH = `${API_PREFIX}/health`;
 
-function sendJson(res: ServerResponse, statusCode: number, body: unknown): void {
-  res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
-  res.end(JSON.stringify(body));
+function stripApiPrefix(pathname: string): string | null {
+  if (pathname === API_PREFIX) {
+    return '/';
+  }
+  if (!pathname.startsWith(`${API_PREFIX}/`)) {
+    return null;
+  }
+  return pathname.slice(API_PREFIX.length);
+}
+
+function buildRoutes(): RouteDefinition[] {
+  const botUsername = resolveBotUsername();
+  return [...createEnrollmentLinkRoutes(botUsername)];
 }
 
 async function handleHealth(res: ServerResponse): Promise<void> {
@@ -21,29 +37,61 @@ async function handleHealth(res: ServerResponse): Promise<void> {
 async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
+  routes: RouteDefinition[],
+  adminApiToken: string,
   logger: Logger,
 ): Promise<void> {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+  const method = req.method ?? 'GET';
+  const path = stripApiPrefix(url.pathname);
 
-  if (req.method === 'GET' && url.pathname === HEALTH_PATH) {
+  if (path === null) {
+    sendJson(res, 404, {
+      error: {
+        code: 'NOT_FOUND',
+        message: `Route ${method} ${url.pathname} not found`,
+        details: {},
+      },
+    });
+    return;
+  }
+
+  if (method === 'GET' && path === '/health') {
     await handleHealth(res);
     return;
   }
 
-  sendJson(res, 404, {
-    error: {
-      code: 'NOT_FOUND',
-      message: `Route ${req.method ?? 'GET'} ${url.pathname} not found`,
-      details: {},
-    },
-  });
+  const match = findRoute(routes, method, path);
+  if (!match) {
+    sendJson(res, 404, {
+      error: {
+        code: 'NOT_FOUND',
+        message: `Route ${method} ${url.pathname} not found`,
+        details: {},
+      },
+    });
+    logger.warn({ method, path: url.pathname }, 'Route not found');
+    return;
+  }
 
-  logger.warn({ method: req.method, path: url.pathname }, 'Route not found');
+  if (match.route.requiresAdminAuth) {
+    requireAdminAuth(req, adminApiToken);
+  }
+
+  await match.route.handler({ req, res, params: match.params, logger });
 }
 
 export function createApiServer(logger: Logger): Server {
+  const routes = buildRoutes();
+  const adminApiToken = resolveAdminApiToken();
+
   const server = createServer((req, res) => {
-    void handleRequest(req, res, logger).catch((err: unknown) => {
+    void handleRequest(req, res, routes, adminApiToken, logger).catch((err: unknown) => {
+      if (err instanceof ApiError) {
+        sendApiError(res, err);
+        return;
+      }
+
       logger.error({ err, method: req.method, url: req.url }, 'Unhandled request error');
       if (!res.headersSent) {
         sendJson(res, 500, {

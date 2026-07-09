@@ -1,11 +1,18 @@
 // Точка входа сервиса API (admin + internal endpoints).
 
-import { closeDatabaseConnection, createLogger, LOG_EVENTS } from '@nutrition-bot/shared';
+import {
+  closeDatabaseConnection,
+  createLogger,
+  ensureModelsInitialized,
+  LOG_EVENTS,
+} from '@nutrition-bot/shared';
 import { resolvePort } from './config.js';
 import { createApiServer, HEALTH_PATH } from './server.js';
 
 export const SERVICE_NAME = 'api';
 export const logger = createLogger(SERVICE_NAME);
+
+ensureModelsInitialized();
 
 const server = createApiServer(logger);
 const port = resolvePort();
