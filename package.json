@@ -23,7 +23,9 @@
     "format:check": "prettier --check \"packages/**/*.{ts,json}\" \"scripts/**/*.ts\" \"migrations/**/*.ts\" \"*.{json,mjs}\" \"tsconfig*.json\" \".prettierrc.json\"",
     "db:migrate": "tsx scripts/migrate.ts up",
     "db:migrate:undo": "tsx scripts/migrate.ts down",
-    "db:migrate:status": "tsx scripts/migrate.ts status"
+    "db:migrate:status": "tsx scripts/migrate.ts status",
+    "dev:api": "npm run dev -w @nutrition-bot/api",
+    "start:api": "npm run build -w @nutrition-bot/api && npm run start -w @nutrition-bot/api"
   },
   "dependencies": {
     "umzug": "^3.8.3"
