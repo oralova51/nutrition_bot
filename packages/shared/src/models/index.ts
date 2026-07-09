@@ -3,6 +3,7 @@ import { getSequelize } from '../db/sequelize.js';
 import { Client, initClientModel } from './client.js';
 import { ClientEnrollment, initClientEnrollmentModel } from './client-enrollment.js';
 import { Course, initCourseModel } from './course.js';
+import { Message, initMessageModel } from './message.js';
 import { NotificationSettings, initNotificationSettingsModel } from './notification-settings.js';
 
 export { Client } from './client.js';
@@ -14,6 +15,17 @@ export {
   type OnboardingStatus,
 } from './client-enrollment.js';
 export { Course } from './course.js';
+export {
+  Message,
+  DELIVERY_STATUSES,
+  MESSAGE_CATEGORIES,
+  MESSAGE_CHANNELS,
+  MESSAGE_TYPES,
+  type DeliveryStatus,
+  type MessageCategory,
+  type MessageChannel,
+  type MessageType,
+} from './message.js';
 export {
   NotificationSettings,
   DISABLED_REASONS,
@@ -35,6 +47,9 @@ function initAssociations(): void {
 
   Client.hasOne(NotificationSettings, { foreignKey: 'clientId', as: 'notificationSettings' });
   NotificationSettings.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
+
+  Client.hasMany(Message, { foreignKey: 'clientId', as: 'messages' });
+  Message.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
 }
 
 /** Регистрирует все Sequelize-модели на переданном экземпляре. */
@@ -43,6 +58,7 @@ export function initModels(sequelize: Sequelize): void {
   initCourseModel(sequelize);
   initClientEnrollmentModel(sequelize);
   initNotificationSettingsModel(sequelize);
+  initMessageModel(sequelize);
   initAssociations();
   modelsInitialized = true;
 }
