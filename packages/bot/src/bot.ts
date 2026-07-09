@@ -3,6 +3,7 @@
 
 import { Bot, GrammyError, HttpError } from 'grammy';
 import type { Logger } from 'pino';
+import { createStartHandler } from './commands/start.js';
 import type { BotContext } from './context.js';
 import { createClientContextMiddleware } from './middleware/client-context.js';
 
@@ -10,6 +11,8 @@ export function createBot(token: string, logger: Logger): Bot<BotContext> {
   const bot = new Bot<BotContext>(token);
 
   bot.use(createClientContextMiddleware(logger));
+
+  bot.command('start', createStartHandler(logger));
 
   bot.catch((err) => {
     const { ctx, error } = err;
