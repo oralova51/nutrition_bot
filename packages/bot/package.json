@@ -1,0 +1,22 @@
+{
+  "name": "@nutrition-bot/bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Telegram-бот: обработка апдейтов, онбординг, дневник питания",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@nutrition-bot/shared": "*"
+  },
+  "scripts": {
+    "build": "tsc -b .",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  }
+}
