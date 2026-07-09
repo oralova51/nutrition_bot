@@ -1,8 +1,13 @@
-// Точка входа Telegram-бота: регистрация (проверка токена) и запуск в режиме
-// long polling (dev) или webhook (prod) — roadmap 2.1, adminAPI.md §6, §9 (п.3).
-// Middleware Client/enrollment и обработчики команд добавляются на шагах 2.2+.
+// Точка входа Telegram-бота: регистрация (проверка токена), инициализация моделей БД
+// и запуск в режиме long polling (dev) или webhook (prod) — roadmap 2.1–2.2,
+// adminAPI.md §6, §9 (п.3). Обработчики команд добавляются на шагах 2.3+.
 
-import { createLogger, LOG_EVENTS } from '@nutrition-bot/shared';
+import {
+  closeDatabaseConnection,
+  createLogger,
+  ensureModelsInitialized,
+  LOG_EVENTS,
+} from '@nutrition-bot/shared';
 import type { Server } from 'node:http';
 import { createBot } from './bot.js';
 import {
@@ -60,6 +65,8 @@ async function startWebhook(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  ensureModelsInitialized();
+
   const me = await bot.api.getMe();
   logger.info({ botUsername: me.username, mode }, 'Токен бота проверен (getMe)');
 
@@ -81,6 +88,7 @@ function shutdown(signal: string): void {
   const stop = mode === 'webhook' ? stopWebhook() : bot.stop();
 
   void stop
+    .then(() => closeDatabaseConnection())
     .then(() => {
       logger.info(`${SERVICE_NAME} service stopped`);
       process.exit(0);

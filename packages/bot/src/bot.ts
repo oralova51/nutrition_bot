@@ -1,11 +1,15 @@
-// Создание экземпляра grammY-бота и централизованного обработчика ошибок middleware.
-// nonFR §6: сбои должны логироваться структурированно.
+// Создание экземпляра grammY-бота: подключение middleware (Client-контекст, roadmap 2.2)
+// и централизованного обработчика ошибок. nonFR §6: сбои должны логироваться структурированно.
 
 import { Bot, GrammyError, HttpError } from 'grammy';
 import type { Logger } from 'pino';
+import type { BotContext } from './context.js';
+import { createClientContextMiddleware } from './middleware/client-context.js';
 
-export function createBot(token: string, logger: Logger): Bot {
-  const bot = new Bot(token);
+export function createBot(token: string, logger: Logger): Bot<BotContext> {
+  const bot = new Bot<BotContext>(token);
+
+  bot.use(createClientContextMiddleware(logger));
 
   bot.catch((err) => {
     const { ctx, error } = err;
