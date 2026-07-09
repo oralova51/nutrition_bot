@@ -2,6 +2,7 @@
   "name": "nutrition-bot",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Telegram-бот «Виртуальный консультант по питанию» — monorepo (bot, api, shared, scheduler)",
   "workspaces": [
     "packages/shared",
@@ -15,11 +16,17 @@
   "scripts": {
     "build": "tsc -b",
     "clean": "tsc -b --clean && npm run clean --workspaces --if-present",
-    "typecheck": "tsc -b",
+    "typecheck": "tsc -b && tsc -p tsconfig.scripts.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "format": "prettier --write \"packages/**/*.{ts,json}\" \"*.{json,mjs}\" \"tsconfig*.json\" \".prettierrc.json\"",
-    "format:check": "prettier --check \"packages/**/*.{ts,json}\" \"*.{json,mjs}\" \"tsconfig*.json\" \".prettierrc.json\""
+    "format": "prettier --write \"packages/**/*.{ts,json}\" \"scripts/**/*.ts\" \"migrations/**/*.ts\" \"*.{json,mjs}\" \"tsconfig*.json\" \".prettierrc.json\"",
+    "format:check": "prettier --check \"packages/**/*.{ts,json}\" \"scripts/**/*.ts\" \"migrations/**/*.ts\" \"*.{json,mjs}\" \"tsconfig*.json\" \".prettierrc.json\"",
+    "db:migrate": "tsx scripts/migrate.ts up",
+    "db:migrate:undo": "tsx scripts/migrate.ts down",
+    "db:migrate:status": "tsx scripts/migrate.ts status"
+  },
+  "dependencies": {
+    "umzug": "^3.8.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
@@ -27,6 +34,7 @@
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.7.4",
+    "tsx": "^4.23.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.49.0"
   }

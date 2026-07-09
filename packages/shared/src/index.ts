@@ -2,3 +2,5 @@
 // Наполняется на последующих шагах этапа 1 (модели/типы) и далее.
 
 export const PACKAGE_NAME = '@nutrition-bot/shared';
+
+export * from './db/index.js';

@@ -15,5 +15,10 @@
   "scripts": {
     "build": "tsc -b .",
     "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "pg": "^8.22.0",
+    "sequelize": "^6.37.8"
   }
 }

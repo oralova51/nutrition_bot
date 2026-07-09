@@ -12,7 +12,10 @@ export default defineConfig(
     extends: [eslint.configs.recommended, ...tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       parserOptions: {
-        projectService: true,
+        projectService: {
+          allowDefaultProject: ['scripts/*.ts', 'migrations/*.ts'],
+          defaultProject: 'tsconfig.scripts.json',
+        },
         tsconfigRootDir: import.meta.dirname,
       },
     },
