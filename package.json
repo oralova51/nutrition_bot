@@ -25,7 +25,9 @@
     "db:migrate:undo": "tsx scripts/migrate.ts down",
     "db:migrate:status": "tsx scripts/migrate.ts status",
     "dev:api": "npm run dev -w @nutrition-bot/api",
-    "start:api": "npm run build -w @nutrition-bot/api && npm run start -w @nutrition-bot/api"
+    "start:api": "npm run build -w @nutrition-bot/api && npm run start -w @nutrition-bot/api",
+    "dev:bot": "npm run dev -w @nutrition-bot/bot",
+    "start:bot": "npm run build -w @nutrition-bot/bot && npm run start -w @nutrition-bot/bot"
   },
   "dependencies": {
     "umzug": "^3.8.3"

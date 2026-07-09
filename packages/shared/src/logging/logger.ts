@@ -12,6 +12,7 @@ const REDACT_PATHS = [
   'authorization',
   'DATABASE_URL',
   'TELEGRAM_API',
+  'WEBHOOK_SECRET_TOKEN',
   '*.password',
   '*.token',
   '*.authorization',
