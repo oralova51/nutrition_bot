@@ -3,6 +3,11 @@ import { getSequelize } from '../db/sequelize.js';
 import { Client, initClientModel } from './client.js';
 import { ClientEnrollment, initClientEnrollmentModel } from './client-enrollment.js';
 import { Course, initCourseModel } from './course.js';
+import {
+  EnrollmentLinkAttempt,
+  initEnrollmentLinkAttemptModel,
+} from './enrollment-link-attempt.js';
+import { EnrollmentLink, initEnrollmentLinkModel } from './enrollment-link.js';
 import { Message, initMessageModel } from './message.js';
 import { NotificationSettings, initNotificationSettingsModel } from './notification-settings.js';
 
@@ -15,6 +20,16 @@ export {
   type OnboardingStatus,
 } from './client-enrollment.js';
 export { Course } from './course.js';
+export {
+  EnrollmentLink,
+  ENROLLMENT_LINK_STATUSES,
+  type EnrollmentLinkStatus,
+} from './enrollment-link.js';
+export {
+  EnrollmentLinkAttempt,
+  ENROLLMENT_LINK_ATTEMPT_RESULTS,
+  type EnrollmentLinkAttemptResult,
+} from './enrollment-link-attempt.js';
 export {
   Message,
   DELIVERY_STATUSES,
@@ -50,6 +65,12 @@ function initAssociations(): void {
 
   Client.hasMany(Message, { foreignKey: 'clientId', as: 'messages' });
   Message.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
+
+  ClientEnrollment.hasMany(EnrollmentLink, { foreignKey: 'enrollmentId', as: 'enrollmentLinks' });
+  EnrollmentLink.belongsTo(ClientEnrollment, { foreignKey: 'enrollmentId', as: 'enrollment' });
+
+  EnrollmentLink.hasMany(EnrollmentLinkAttempt, { foreignKey: 'linkId', as: 'attempts' });
+  EnrollmentLinkAttempt.belongsTo(EnrollmentLink, { foreignKey: 'linkId', as: 'link' });
 }
 
 /** Регистрирует все Sequelize-модели на переданном экземпляре. */
@@ -59,6 +80,8 @@ export function initModels(sequelize: Sequelize): void {
   initClientEnrollmentModel(sequelize);
   initNotificationSettingsModel(sequelize);
   initMessageModel(sequelize);
+  initEnrollmentLinkModel(sequelize);
+  initEnrollmentLinkAttemptModel(sequelize);
   initAssociations();
   modelsInitialized = true;
 }

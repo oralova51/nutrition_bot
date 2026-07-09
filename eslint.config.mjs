@@ -15,6 +15,9 @@ export default defineConfig(
         projectService: {
           allowDefaultProject: ['scripts/*.ts', 'migrations/*.ts'],
           defaultProject: 'tsconfig.scripts.json',
+          // Список миграций будет расти на каждом этапе roadmap — поднимаем лимит,
+          // чтобы не приходилось трогать конфиг при каждой новой миграции.
+          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 50,
         },
         tsconfigRootDir: import.meta.dirname,
       },
