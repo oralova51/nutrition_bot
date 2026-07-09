@@ -1,0 +1,22 @@
+{
+  "sqltools.connections": [
+    {
+      "ssh": "Disabled",
+      "previewLimit": 50,
+      "server": "localhost",
+      "port": 5432,
+      "driver": "PostgreSQL",
+      "name": "postgres",
+      "database": "AI",
+      "username": "admin"
+    },
+    {
+      "ssh": "Disabled",
+      "previewLimit": 50,
+      "server": "localhost",
+      "driver": "PostgreSQL",
+      "name": "nutrition_lpg39_bot",
+      "connectString": "postgresql://postgres.hnpokpvqvohbmgkreghj:Hjfk893:1!@:{}Ijv@aws-0-eu-north-1.pooler.supabase.com:5432/postgres"
+    }
+  ]
+}
