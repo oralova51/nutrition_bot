@@ -6,3 +6,4 @@ export const PACKAGE_NAME = '@nutrition-bot/shared';
 export * from './db/index.js';
 export * from './logging/index.js';
 export * from './models/index.js';
+export * from './questionnaire/template.js';

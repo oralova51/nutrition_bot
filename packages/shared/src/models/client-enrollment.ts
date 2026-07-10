@@ -10,12 +10,7 @@ import {
   type Sequelize,
 } from 'sequelize';
 
-export const CLIENT_ENROLLMENT_STATUSES = [
-  'active',
-  'paused',
-  'completed',
-  'cancelled',
-] as const;
+export const CLIENT_ENROLLMENT_STATUSES = ['active', 'paused', 'completed', 'cancelled'] as const;
 
 export type ClientEnrollmentStatus = (typeof CLIENT_ENROLLMENT_STATUSES)[number];
 

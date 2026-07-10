@@ -5,7 +5,7 @@
 > Пометка `✓` внутри шагов = готова спецификация в `SA/`, **не** реализация кода.
 > Правило: при старте шага ставь `[~]`, при завершении — `[x]`, и синхронизируй статус здесь.
 
-**Текущий фокус:** Этап 3A завершён (3.1–3.6); дальше — 3B онбординг+анкета (3.7–3.15).
+**Текущий фокус:** Этап 3.7 завершён (Questionnaire + шаблон вопросов); следующий — 3.8 (state machine онбординга).
 
 - [x] Этап 0 — Подготовка (спецификации SA: ERD, Domain, adminAPI готовы; шаг 0.5 ✓)
 - [x] Этап 1 — Каркас проекта (TS/ESLint/Prettier, БД, модели Client/Course/Enrollment/Notification/Message, логирование, health-check)
@@ -113,8 +113,8 @@ API: POST /admin/enrollments/:id/link/regenerate — новая ссылка п�
 > Чек-лист §8 пройден вручную (curl) на реальной БД: health, POST courses, POST clients, POST link, GET clients?linkStatus=active, GET clients/:id, POST link/regenerate — все шаги отработали корректно. Заодно реализован весь оставшийся набор admin-эндпоинтов из adminAPI.md §4 (`packages/api/src/{services,routes}/{courses,clients,enrollments}.ts` + `GET`/`DELETE` в `enrollment-links.ts`): `GET/POST /admin/courses`, `POST/GET /admin/clients`, `GET /admin/clients/:id`, `GET /admin/enrollments/:id`, `GET /admin/enrollments/:id/link`, `DELETE .../link/:linkId`, `GET /admin/enrollments/expired-links`. Общие валидаторы/пагинация — `packages/api/src/validation.ts`. Ограничение MVP: `onboarding.currentQuestion/totalQuestions/lastAnswerAt` и `onboarding.completedAt` — `null`, источник (Questionnaire) появится на 3.7+. Отдельный файл Postman-коллекции не создавался (не запрашивался).
 3B. Онбординг (ФТ-2)
 #	Шаг
-3.7
-Сущность Questionnaire + шаблон вопросов (минимум 5)
+3.7 [x]
+Сущность Questionnaire + шаблон вопросов (минимум 5) — модель `packages/shared/src/models/questionnaire.ts`, миграция `migrations/20260710113800-create-questionnaires-table.ts`, шаблон `packages/shared/src/questionnaire/template.ts` (10 вопросов из SA/anketa.md)
 3.8
 State machine онбординга: welcome → questionnaire → settings
 3.9

@@ -10,6 +10,7 @@ import {
 import { EnrollmentLink, initEnrollmentLinkModel } from './enrollment-link.js';
 import { Message, initMessageModel } from './message.js';
 import { NotificationSettings, initNotificationSettingsModel } from './notification-settings.js';
+import { Questionnaire, initQuestionnaireModel } from './questionnaire.js';
 
 export { Client } from './client.js';
 export {
@@ -50,6 +51,11 @@ export {
   type NotificationFrequency,
   type NotificationType,
 } from './notification-settings.js';
+export {
+  Questionnaire,
+  QUESTIONNAIRE_STATUSES,
+  type QuestionnaireStatus,
+} from './questionnaire.js';
 
 let modelsInitialized = false;
 
@@ -65,6 +71,15 @@ function initAssociations(): void {
 
   Client.hasMany(Message, { foreignKey: 'clientId', as: 'messages' });
   Message.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
+
+  ClientEnrollment.hasMany(Questionnaire, {
+    foreignKey: 'clientEnrollmentId',
+    as: 'questionnaires',
+  });
+  Questionnaire.belongsTo(ClientEnrollment, { foreignKey: 'clientEnrollmentId', as: 'enrollment' });
+
+  Client.hasMany(Questionnaire, { foreignKey: 'clientId', as: 'questionnaires' });
+  Questionnaire.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
 
   ClientEnrollment.hasMany(EnrollmentLink, { foreignKey: 'enrollmentId', as: 'enrollmentLinks' });
   EnrollmentLink.belongsTo(ClientEnrollment, { foreignKey: 'enrollmentId', as: 'enrollment' });
@@ -82,6 +97,7 @@ export function initModels(sequelize: Sequelize): void {
   initMessageModel(sequelize);
   initEnrollmentLinkModel(sequelize);
   initEnrollmentLinkAttemptModel(sequelize);
+  initQuestionnaireModel(sequelize);
   initAssociations();
   modelsInitialized = true;
 }

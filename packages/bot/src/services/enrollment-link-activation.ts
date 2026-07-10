@@ -19,10 +19,7 @@ export const ENROLLMENT_LINK_PAYLOAD_PREFIX = 'enr_';
 const CODE_PATTERN = /^[A-Za-z0-9_-]{16}$/;
 
 export type ActivationErrorCode =
-  | 'INVALID_CODE'
-  | 'LINK_EXPIRED'
-  | 'ALREADY_USED'
-  | 'ENROLLMENT_CANCELLED';
+  'INVALID_CODE' | 'LINK_EXPIRED' | 'ALREADY_USED' | 'ENROLLMENT_CANCELLED';
 
 export type ActivationResult =
   | { success: true; enrollmentId: string; clientId: string; onboardingStatus: string }
@@ -107,7 +104,9 @@ export async function activateEnrollmentLink(
       { linkId: link.id, enrollmentId: link.enrollmentId },
       'EnrollmentLink ссылается на несуществующий ClientEnrollment — нарушение целостности данных',
     );
-    throw new Error(`ClientEnrollment ${link.enrollmentId} не найден для EnrollmentLink ${link.id}`);
+    throw new Error(
+      `ClientEnrollment ${link.enrollmentId} не найден для EnrollmentLink ${link.id}`,
+    );
   }
 
   if (enrollment.status === 'cancelled') {
@@ -121,7 +120,9 @@ export async function activateEnrollmentLink(
       { linkId: link.id, clientId: enrollment.clientId },
       'ClientEnrollment ссылается на несуществующего Client — нарушение целостности данных',
     );
-    throw new Error(`Client ${enrollment.clientId} не найден для ClientEnrollment ${enrollment.id}`);
+    throw new Error(
+      `Client ${enrollment.clientId} не найден для ClientEnrollment ${enrollment.id}`,
+    );
   }
 
   const now = new Date();
