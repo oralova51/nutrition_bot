@@ -4,7 +4,9 @@ import { ApiError, readJsonBody, sendJson } from '../http.js';
 import type { RouteContext, RouteDefinition } from '../router.js';
 import {
   createEnrollmentLink,
+  getEnrollmentLinkInfo,
   regenerateEnrollmentLink,
+  revokeEnrollmentLink,
   serializeEnrollmentLink,
 } from '../services/enrollment-links.js';
 
@@ -29,6 +31,14 @@ function requireEnrollmentId(params: Record<string, string>): string {
     throw new ApiError(400, 'INVALID_PARAMS', 'enrollmentId обязателен в пути запроса');
   }
   return enrollmentId;
+}
+
+function requireLinkId(params: Record<string, string>): string {
+  const linkId = params.linkId;
+  if (!linkId) {
+    throw new ApiError(400, 'INVALID_PARAMS', 'linkId обязателен в пути запроса');
+  }
+  return linkId;
 }
 
 /** @param botUsername username бота (без @) для построения deep link в ответе. */
@@ -57,6 +67,27 @@ export function createEnrollmentLinkRoutes(botUsername: string): RouteDefinition
 
         const link = await regenerateEnrollmentLink(enrollmentId);
         sendJson(res, 201, { link: serializeEnrollmentLink(link, botUsername) });
+      },
+    },
+    {
+      method: 'GET',
+      pattern: '/admin/enrollments/:enrollmentId/link',
+      requiresAdminAuth: true,
+      handler: async ({ res, params }: RouteContext): Promise<void> => {
+        const enrollmentId = requireEnrollmentId(params);
+        const info = await getEnrollmentLinkInfo(enrollmentId, botUsername);
+        sendJson(res, 200, info);
+      },
+    },
+    {
+      method: 'DELETE',
+      pattern: '/admin/enrollments/:enrollmentId/link/:linkId',
+      requiresAdminAuth: true,
+      handler: async ({ res, params }: RouteContext): Promise<void> => {
+        const enrollmentId = requireEnrollmentId(params);
+        const linkId = requireLinkId(params);
+        const result = await revokeEnrollmentLink(enrollmentId, linkId);
+        sendJson(res, 200, result);
       },
     },
   ];

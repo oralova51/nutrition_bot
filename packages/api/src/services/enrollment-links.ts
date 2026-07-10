@@ -5,8 +5,10 @@
 // в revoked/expired, иначе insert упадёт на constraint.
 
 import { randomBytes } from 'node:crypto';
-import { ClientEnrollment, EnrollmentLink } from '@nutrition-bot/shared';
+import { ClientEnrollment, EnrollmentLink, EnrollmentLinkAttempt } from '@nutrition-bot/shared';
+import { Op } from 'sequelize';
 import { ApiError } from '../http.js';
+import { toNullableNumber } from '../validation.js';
 
 /** adminAPI.md §2: код — 16 символов base64url (без префикса `enr_`). */
 const CODE_BYTES = 12;
@@ -138,4 +140,109 @@ export async function regenerateEnrollmentLink(enrollmentId: string): Promise<En
   }
 
   return insertNewLink(enrollmentId);
+}
+
+async function ensureEnrollmentExists(enrollmentId: string): Promise<void> {
+  const enrollment = await ClientEnrollment.findByPk(enrollmentId);
+  if (!enrollment) {
+    throw new ApiError(
+      404,
+      'ENROLLMENT_NOT_FOUND',
+      `ClientEnrollment with id '${enrollmentId}' not found`,
+    );
+  }
+}
+
+export interface EnrollmentLinkInfo {
+  active: { id: string; url: string; status: string; expiresAt: string } | null;
+  history: Array<{
+    id: string;
+    status: string;
+    createdAt: string;
+    expiresAt: string;
+    usedAt: string | null;
+  }>;
+  attempts: Array<{ attemptedAt: string; result: string; telegramId: number | null }>;
+}
+
+/** GET /admin/enrollments/:enrollmentId/link (adminAPI.md §4.4). */
+export async function getEnrollmentLinkInfo(
+  enrollmentId: string,
+  botUsername: string,
+): Promise<EnrollmentLinkInfo> {
+  await ensureEnrollmentExists(enrollmentId);
+
+  const links = await EnrollmentLink.findAll({
+    where: { enrollmentId },
+    order: [['createdAt', 'DESC']],
+  });
+  const active = links.find((link) => link.status === 'active') ?? null;
+  const history = links.filter((link) => link.id !== active?.id);
+
+  const attempts =
+    links.length === 0
+      ? []
+      : await EnrollmentLinkAttempt.findAll({
+          where: { linkId: { [Op.in]: links.map((link) => link.id) } },
+          order: [['attemptedAt', 'DESC']],
+        });
+
+  return {
+    active: active
+      ? {
+          id: active.id,
+          url: buildDeepLinkUrl(botUsername, active.code),
+          status: active.status,
+          expiresAt: active.expiresAt.toISOString(),
+        }
+      : null,
+    history: history.map((link) => ({
+      id: link.id,
+      status: link.status,
+      createdAt: link.createdAt.toISOString(),
+      expiresAt: link.expiresAt.toISOString(),
+      usedAt: link.usedAt ? link.usedAt.toISOString() : null,
+    })),
+    attempts: attempts.map((attempt) => ({
+      attemptedAt: attempt.attemptedAt.toISOString(),
+      result: attempt.result,
+      telegramId: toNullableNumber(attempt.telegramId),
+    })),
+  };
+}
+
+export interface RevokeLinkResult {
+  status: 'revoked';
+  revokedAt: string;
+}
+
+/**
+ * DELETE /admin/enrollments/:enrollmentId/link/:linkId (adminAPI.md §4.4).
+ * Отзыв допустим только для активной (не использованной/не истёкшей) ссылки.
+ */
+export async function revokeEnrollmentLink(
+  enrollmentId: string,
+  linkId: string,
+): Promise<RevokeLinkResult> {
+  const link = await EnrollmentLink.findOne({ where: { id: linkId, enrollmentId } });
+  if (!link) {
+    throw new ApiError(
+      404,
+      'LINK_NOT_FOUND',
+      `EnrollmentLink with id '${linkId}' not found for enrollment '${enrollmentId}'`,
+    );
+  }
+
+  if (link.status !== 'active') {
+    throw new ApiError(
+      422,
+      'LINK_NOT_ACTIVE',
+      `EnrollmentLink '${linkId}' has status '${link.status}', only an active link can be revoked`,
+    );
+  }
+
+  const revokedAt = new Date();
+  await link.update({ status: 'revoked', revokedAt });
+
+  return { status: 'revoked', revokedAt: revokedAt.toISOString() };
 }

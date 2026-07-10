@@ -9,6 +9,7 @@ export interface RouteContext {
   req: IncomingMessage;
   res: ServerResponse;
   params: Record<string, string>;
+  query: URLSearchParams;
   logger: Logger;
 }
 

@@ -5,18 +5,18 @@
 > Пометка `✓` внутри шагов = готова спецификация в `SA/`, **не** реализация кода.
 > Правило: при старте шага ставь `[~]`, при завершении — `[x]`, и синхронизируй статус здесь.
 
-**Текущий фокус:** Этап 3A — Подключение клиента / генерация ссылок (осталось 3.6 — Postman-коллекция/чек-лист).
+**Текущий фокус:** Этап 3A завершён (3.1–3.6); дальше — 3B онбординг+анкета (3.7–3.15).
 
 - [x] Этап 0 — Подготовка (спецификации SA: ERD, Domain, adminAPI готовы; шаг 0.5 ✓)
 - [x] Этап 1 — Каркас проекта (TS/ESLint/Prettier, БД, модели Client/Course/Enrollment/Notification/Message, логирование, health-check)
 - [x] Этап 2 — Telegram-бот минимальный (webhook/polling, /start, deep link)
-- [~] Этап 3 — Подключение клиента (3A ссылки — сущность+валидация в коде ✓ (2.4–2.6), admin API генерации/regenerate реализовано (3.2, 3.5); 3.6 Postman-коллекция ещё нет; 3B онбординг+анкета; 3C настройки уведомлений)
+- [~] Этап 3 — Подключение клиента (3A ссылки — код и admin API полностью реализованы и проверены (3.1–3.6, включая полный набор admin-эндпоинтов adminAPI.md §4: courses, clients, enrollments, управление ссылками, expired-links); 3B онбординг+анкета; 3C настройки уведомлений)
 - [ ] Этап 4 — Ежедневное взаимодействие (планировщик/напоминания, дневник питания, вечернее напоминание)
 - [ ] Этап 5 — AI и рекомендации (абстракция AIEngine, анализ, генерация в мягком тоне, лимиты, rate limit)
 - [ ] Этап 6 — Неактивность и opt-out (ФТ-9..ФТ-12)
 - [ ] Этап 7 — Завершение курса (Report, Feedback, ветки оценок)
 - [ ] Этап 8 — Продление курса (ФТ-18)
-- [ ] Этап 9 — Панели управления (9A админ — спец ✓; 9B специалист)
+- [ ] Этап 9 — Панели управления (9A админ — API-основа готова (9.2, 9.3, 9.10 реализованы кодом), UI и остальные пункты не начаты; 9B специалист)
 - [ ] Этап 10 — Ошибки и edge cases (ФТ-21, ФТ-22)
 - [ ] Этап 11 — Non-functional (шифрование, хранение, мониторинг, AIModelLog)
 - [ ] Этап 12 — Пилот (seed, чек-листы CJM, метрики, go/no-go)
@@ -108,8 +108,9 @@ API: POST /admin/enrollments/:id/link — генерация ссылки — �
 3.5 [x]
 API: POST /admin/enrollments/:id/link/regenerate — новая ссылка после истечения — ✓ adminAPI.md §4.4
 > Реализовано в том же сервисе, что и 3.2 (общая генерация кода/URL). Если текущая active-ссылка ещё не истекла по времени и не использована — 422 LINK_STILL_ACTIVE (используйте `force:true` на обычном эндпоинте); если истекла лениво (статус ещё `active`, но `expiresAt` в прошлом) — переводится в `expired` перед созданием новой, как и при активации ботом (2.4–2.6).
-3.6
+3.6 [x]
 Минимальная admin-страница или Postman-коллекция для генерации ссылок MVP — ✓ чек-лист adminAPI.md §8
+> Чек-лист §8 пройден вручную (curl) на реальной БД: health, POST courses, POST clients, POST link, GET clients?linkStatus=active, GET clients/:id, POST link/regenerate — все шаги отработали корректно. Заодно реализован весь оставшийся набор admin-эндпоинтов из adminAPI.md §4 (`packages/api/src/{services,routes}/{courses,clients,enrollments}.ts` + `GET`/`DELETE` в `enrollment-links.ts`): `GET/POST /admin/courses`, `POST/GET /admin/clients`, `GET /admin/clients/:id`, `GET /admin/enrollments/:id`, `GET /admin/enrollments/:id/link`, `DELETE .../link/:linkId`, `GET /admin/enrollments/expired-links`. Общие валидаторы/пагинация — `packages/api/src/validation.ts`. Ограничение MVP: `onboarding.currentQuestion/totalQuestions/lastAnswerAt` и `onboarding.completedAt` — `null`, источник (Questionnaire) появится на 3.7+. Отдельный файл Postman-коллекции не создавался (не запрашивался).
 3B. Онбординг (ФТ-2)
 #	Шаг
 3.7
@@ -354,8 +355,10 @@ API: создание нового ClientEnrollment при продлении
 Auth для admin API — ✓ MVP: Bearer token (adminAPI.md §1); post-MVP: JWT
 9.2
 Список клиентов: active / inactive — ✓ adminAPI.md §4.3 `GET /admin/clients`
+> Эндпоинт реализован кодом на шаге 3.6 (`packages/api/src/services/clients.ts`); UI-панель (собственно этап 9) не начата.
 9.3
 Генерация ссылки из UI — ✓ adminAPI.md §4.4 (UI post-MVP; MVP — Postman §8)
+> API реализовано на 3.2/3.5; UI — post-MVP, не начато.
 9.4
 Просмотр дневника (анонимизированно)
 9.5
@@ -370,6 +373,7 @@ Inbox критической обратной связи (1–3 звезды)
 Статус недоставленных сообщений
 9.10
 Ссылки с истёкшим сроком (для CJM: повторная генерация)
+> Эндпоинт `GET /admin/enrollments/expired-links` реализован кодом на шаге 3.6 (`packages/api/src/services/enrollments.ts`); UI-панель не начата.
 9B. Специалист (ФТ-20)
 #	Шаг
 9.11

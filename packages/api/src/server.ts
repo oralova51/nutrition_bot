@@ -8,7 +8,10 @@ import { resolveAdminApiToken, resolveBotUsername } from './config.js';
 import { getHealthStatus } from './health.js';
 import { ApiError, sendApiError, sendJson } from './http.js';
 import { findRoute, type RouteDefinition } from './router.js';
+import { createClientRoutes } from './routes/clients.js';
+import { createCourseRoutes } from './routes/courses.js';
 import { createEnrollmentLinkRoutes } from './routes/enrollment-links.js';
+import { createEnrollmentRoutes } from './routes/enrollments.js';
 
 const API_PREFIX = '/api/v1';
 const HEALTH_PATH = `${API_PREFIX}/health`;
@@ -25,7 +28,13 @@ function stripApiPrefix(pathname: string): string | null {
 
 function buildRoutes(): RouteDefinition[] {
   const botUsername = resolveBotUsername();
-  return [...createEnrollmentLinkRoutes(botUsername)];
+  return [
+    ...createEnrollmentLinkRoutes(botUsername),
+    // expired-links (литеральный путь) должен идти раньше :enrollmentId — см. router.ts.
+    ...createEnrollmentRoutes(botUsername),
+    ...createCourseRoutes(),
+    ...createClientRoutes(botUsername),
+  ];
 }
 
 async function handleHealth(res: ServerResponse): Promise<void> {
@@ -78,7 +87,7 @@ async function handleRequest(
     requireAdminAuth(req, adminApiToken);
   }
 
-  await match.route.handler({ req, res, params: match.params, logger });
+  await match.route.handler({ req, res, params: match.params, query: url.searchParams, logger });
 }
 
 export function createApiServer(logger: Logger): Server {
