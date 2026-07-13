@@ -5,7 +5,7 @@
 > Пометка `✓` внутри шагов = готова спецификация в `SA/`, **не** реализация кода.
 > Правило: при старте шага ставь `[~]`, при завершении — `[x]`, и синхронизируй статус здесь.
 
-**Текущий фокус:** Этап 3.7 завершён (Questionnaire + шаблон вопросов); следующий — 3.8 (state machine онбординга).
+**Текущий фокус:** Этап 3.8 завершён (state machine онбординга); следующий — 3.9–3.15 (детали welcome/validation/reminder/approximate) или сразу 3C (настройки уведомлений).
 
 - [x] Этап 0 — Подготовка (спецификации SA: ERD, Domain, adminAPI готовы; шаг 0.5 ✓)
 - [x] Этап 1 — Каркас проекта (TS/ESLint/Prettier, БД, модели Client/Course/Enrollment/Notification/Message, логирование, health-check)
@@ -115,8 +115,8 @@ API: POST /admin/enrollments/:id/link/regenerate — новая ссылка п�
 #	Шаг
 3.7 [x]
 Сущность Questionnaire + шаблон вопросов (минимум 5) — модель `packages/shared/src/models/questionnaire.ts`, миграция `migrations/20260710113800-create-questionnaires-table.ts`, шаблон `packages/shared/src/questionnaire/template.ts` (10 вопросов из SA/anketa.md)
-3.8
-State machine онбординга: welcome → questionnaire → settings
+3.8 [x]
+State machine онбординга: welcome → questionnaire → settings — middleware загружает `ctx.enrollment`, сервис `packages/bot/src/services/onboarding.ts` управляет статусами, `packages/bot/src/handlers/onboarding-handler.ts` маршрутизирует сообщения, `/start` запускает onboarding после активации ссылки
 3.9
 Приветственное сообщение (цель бота, ежедневные напоминания)
 3.10

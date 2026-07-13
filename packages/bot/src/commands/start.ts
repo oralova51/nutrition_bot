@@ -10,6 +10,7 @@ import {
   activateEnrollmentLink,
   type ActivationErrorCode,
 } from '../services/enrollment-link-activation.js';
+import { startOnboarding } from '../services/onboarding.js';
 
 const AWAITING_LINK_MESSAGE =
   'Привет! Я бот-консультант по питанию 🙂\n\n' +
@@ -65,10 +66,11 @@ export function createStartHandler(
 
       if (result.success) {
         logger.info(
-          { telegramId, enrollmentId: result.enrollmentId, clientId: result.clientId },
+          { telegramId, enrollmentId: result.enrollment.id, clientId: result.clientId },
           'Ссылка-приглашение активирована',
         );
         await ctx.reply(ACTIVATION_SUCCESS_MESSAGE);
+        await startOnboarding(ctx, result.enrollment);
         return;
       }
 

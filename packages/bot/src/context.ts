@@ -1,7 +1,7 @@
 // Кастомный контекст grammY бота.
 // roadmap 2.2: заполняется в middleware src/middleware/client-context.ts.
 
-import type { Client } from '@nutrition-bot/shared';
+import type { Client, ClientEnrollment } from '@nutrition-bot/shared';
 import type { Context } from 'grammy';
 
 export type BotContext = Context & {
@@ -12,4 +12,9 @@ export type BotContext = Context & {
    * только при активации ссылки-приглашения (roadmap 2.4–2.5).
    */
   client?: Client;
+  /**
+   * Активный ClientEnrollment клиента, по которому ведётся онбординг или курс.
+   * undefined, если у клиента нет подходящего enrollment (например, ссылка ещё не активирована).
+   */
+  enrollment?: ClientEnrollment;
 };

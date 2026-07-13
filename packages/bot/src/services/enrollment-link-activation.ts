@@ -22,7 +22,7 @@ export type ActivationErrorCode =
   'INVALID_CODE' | 'LINK_EXPIRED' | 'ALREADY_USED' | 'ENROLLMENT_CANCELLED';
 
 export type ActivationResult =
-  | { success: true; enrollmentId: string; clientId: string; onboardingStatus: string }
+  | { success: true; enrollment: ClientEnrollment; clientId: string; onboardingStatus: string }
   | { success: false; error: ActivationErrorCode };
 
 export interface ActivateEnrollmentLinkParams {
@@ -136,7 +136,7 @@ export async function activateEnrollmentLink(
 
   return {
     success: true,
-    enrollmentId: enrollment.id,
+    enrollment,
     clientId: client.id,
     onboardingStatus: enrollment.onboardingStatus,
   };
