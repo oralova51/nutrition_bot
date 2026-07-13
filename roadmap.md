@@ -5,13 +5,13 @@
 > Пометка `✓` внутри шагов = готова спецификация в `SA/`, **не** реализация кода.
 > Правило: при старте шага ставь `[~]`, при завершении — `[x]`, и синхронизируй статус здесь.
 
-**Текущий фокус:** Этап 3 завершён (3A, 3B, 3C). Шаг 3.14 (напоминание при брошенной анкете) отложён до этапа 4.1. Следующий — Этап 4 (ежедневное взаимодействие: планировщик, дневник питания, вечернее напоминание).
+**Текущий фокус:** Этап 4.1 и 4A завершены — node-cron интегрирован, единый Telegram-sender в `packages/shared`, ежедневные и напоминания об анкете работают. Следующий шаг — 4.8 (модель NutritionDiary), без которой невозможны дневник и вечернее напоминание.
 
 - [x] Этап 0 — Подготовка (спецификации SA: ERD, Domain, adminAPI готовы; шаг 0.5 ✓)
 - [x] Этап 1 — Каркас проекта (TS/ESLint/Prettier, БД, модели Client/Course/Enrollment/Notification/Message, логирование, health-check)
 - [x] Этап 2 — Telegram-бот минимальный (webhook/polling, /start, deep link)
 - [x] Этап 3 — Подключение клиента (3A ссылки — код и admin API полностью реализованы и проверены (3.1–3.6); 3B онбординг+анкета — welcome и анкета 3.9–3.15 реализованы; 3C настройки уведомлений — 3.16–3.24 реализованы)
-- [ ] Этап 4 — Ежедневное взаимодействие (планировщик/напоминания, дневник питания, вечернее напоминание)
+- [~] Этап 4 — Ежедневное взаимодействие (планировщик/напоминания, дневник питания, вечернее напоминание)
 - [ ] Этап 5 — AI и рекомендации (абстракция AIEngine, анализ, генерация в мягком тоне, лимиты, rate limit)
 - [ ] Этап 6 — Неактивность и opt-out (ФТ-9..ФТ-12)
 - [ ] Этап 7 — Завершение курса (Report, Feedback, ветки оценок)
@@ -132,9 +132,9 @@ State machine онбординга: welcome → questionnaire → settings — m
 3.13 [x]
 Сохранение ответов + completedAt
 > Реализовано в `handleQuestionnaireAnswer`: ответы накапливаются в `answers`, при завершении обновляются `status: 'completed'`, `completedAt`, `lastAnswerAt`, а `ClientEnrollment` переводится в `onboardingStatus: 'settings_pending'`.
-3.14 [ ]
-Обработка «бросила анкету на полпути» — напоминание через N часов (правило не описано в SA — нужно задать)
-> Параметр N для теста зафиксирован как 2 минуты. Реализация отложена до этапа 4.1, потому что требует планировщика, а выбор движка (node-cron / BullMQ) запланирован там.
+3.14 [x]
+Обработка «бросила анкету на полпути» — напоминание через N часов
+> Параметр N для теста зафиксирован как 2 минуты. Реализовано в `packages/scheduler/src/jobs/questionnaire-reminder.ts`: cron каждые 2 минуты, выборка `Questionnaire` со статусом `in_progress`, мягкое напоминание с номером текущего вопроса, обновление `lastReminderAt`.
 3.15 [x]
 Разрешить приблизительные ответы без цифр (рекомендация UserResearch для персоны Анны)
 > Реализовано в `packages/bot/src/services/onboarding.ts`: `parseNumberAnswer` учитывает `question.allowApproximate`, а number-вопросы `age` и `weight` из `packages/shared/src/questionnaire/template.ts` получили подсказки, что можно ответить примерно.
@@ -170,20 +170,27 @@ State machine онбординга: welcome → questionnaire → settings — m
 Этап 4. Ежедневное взаимодействие (Фаза 2 SA)
 4A. Планировщик и напоминания (ФТ-4)
 #	Шаг
-4.1
-Job scheduler (cron / Bull / node-cron)
-4.2
+4.1 [x]
+Job scheduler (node-cron)
+> Выбор: node-cron (без Redis, подходит для MVP). Реализован сервис `packages/scheduler`, запускается отдельным процессом, graceful shutdown по SIGINT/SIGTERM.
+4.2 [x]
 Выборка клиентов с активными NotificationSettings на текущий слот
-4.3
+> Реализовано в `packages/scheduler/src/jobs/daily-reminder.ts`: JOIN `Client` + `NotificationSettings` + `ClientEnrollment`, фильтрация по `enabled`, `enabledTypes` содержит `diary`, `telegramId` не пуст, `onboardingStatus = completed`.
+4.3 [x]
 Проверка частоты (ежедневно / через день / по дням)
-4.4
+> Реализовано в `daily-reminder.ts`: `daily` — каждый день, `every_other_day` — относительно `enrollment.startDate`, `three_per_week` — пн/ср/пт, `custom_days` — post-MVP (требует поля `custom_days`).
+4.4 [x]
 Отправка дружеского напоминания «Чем ты завтракал?»
-4.5
+> Текст и отправка в `daily-reminder.ts` через `sendTelegramMessageWithRetry`.
+4.5 [x]
 Запись Reminder + Message
-4.6
+> Запись `Message` создаётся в `sendTelegramMessage` (`packages/shared/src/telegram/sender.ts`) до отправки. Сущность `Reminder` отложена до post-MVP, т.к. не входит в MVP-подмножество (roadmap 0.3).
+4.6 [x]
 Логирование времени отправки
-4.7
+> `createdAt` в `Message` фиксирует время отправки; scheduler логирует `clientId`, `time`, `timezone` в `daily-reminder.ts`.
+4.7 [x]
 Retry при ошибке доставки: +5 мин, макс. 3 попытки
+> Реализовано в `sendTelegramMessageWithRetry`: повторная отправка через 5 мин, `retryCount` в `Message`, после 3 попыток — `delivery_failed` и структурированный лог.
 4B. Дневник питания (ФТ-5)
 #	Шаг
 4.8

@@ -1,6 +1,6 @@
 // Имена сервисов монорепо — попадают в поле `service` каждой log-строки.
 
-export const SERVICE_NAMES = ['api', 'bot', 'scheduler'] as const;
+export const SERVICE_NAMES = ['api', 'bot', 'scheduler', 'telegram-sender'] as const;
 
 export type ServiceName = (typeof SERVICE_NAMES)[number];
 

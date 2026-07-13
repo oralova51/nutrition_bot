@@ -17,7 +17,10 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "date-fns": "^3.6.0",
+    "date-fns-tz": "^3.2.0",
     "dotenv": "^17.4.2",
+    "grammy": "^1.44.0",
     "pg": "^8.22.0",
     "pino": "^10.1.0",
     "sequelize": "^6.37.8"

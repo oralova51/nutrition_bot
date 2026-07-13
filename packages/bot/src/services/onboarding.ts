@@ -5,9 +5,9 @@
 
 import {
   ClientEnrollment,
-  Message,
   Questionnaire,
   QUESTIONNAIRE_QUESTIONS,
+  sendTelegramMessage,
   TOTAL_QUESTIONNAIRE_QUESTIONS,
   type QuestionnaireQuestion,
 } from '@nutrition-bot/shared';
@@ -170,18 +170,20 @@ async function askCurrentQuestion(ctx: BotContext, questionnaire: Questionnaire)
 }
 
 async function sendWelcomeMessage(ctx: BotContext): Promise<void> {
-  await ctx.reply(WELCOME_MESSAGE);
+  const client = ctx.client;
+  if (!client?.telegramId) {
+    // Fallback на случай, если telegramId почему-то недоступен в контексте.
+    await ctx.reply(WELCOME_MESSAGE);
+    return;
+  }
 
-  const clientId = ctx.client?.id;
-  if (!clientId) return;
-
-  await Message.create({
-    clientId,
+  await sendTelegramMessage({
+    telegramId: client.telegramId,
+    text: WELCOME_MESSAGE,
+    clientId: client.id,
     type: 'info',
     category: 'transactional',
-    content: WELCOME_MESSAGE,
-    channel: 'telegram',
-    deliveryStatus: 'sent',
+    parseMode: 'Markdown',
   });
 }
 
