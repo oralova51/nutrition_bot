@@ -5,6 +5,7 @@
 
 import {
   ClientEnrollment,
+  Message,
   Questionnaire,
   QUESTIONNAIRE_QUESTIONS,
   TOTAL_QUESTIONNAIRE_QUESTIONS,
@@ -13,10 +14,11 @@ import {
 import type { BotContext } from '../context.js';
 
 const WELCOME_MESSAGE =
-  'Привет! Я ваш виртуальный консультант по питанию 🤍\n\n' +
-  'Каждый день я буду мягко напоминать заполнить дневник питания, а в конце курса ' +
-  'подготовлю персональный отчёт. Без осуждения, только поддержка.\n\n' +
-  'Для начала задам несколько коротких вопросов — так бот сможет лучше понимать ваши привычки.';
+  'Здравствуйте! Я — ваш виртуальный консультант по питанию 🤍\n\n' +
+  'Моя задача — мягко помогать вам следить за питанием: каждый день я буду напоминать заполнить дневник, ' +
+  'анализировать ваши привычки и присылать персональные рекомендации. В конце курса вы получите итоговый отчёт о прогрессе.\n\n' +
+  'Без осуждения и строгих требований — только поддержка.\n\n' +
+  'Чтобы я мог лучше понимать ваши цели и образ жизни, задам несколько коротких вопросов. Это займёт буквально пару минут.';
 
 const COMPLETED_MESSAGE =
   'Спасибо! Анкета заполнена 🎉\n\n' +
@@ -166,6 +168,22 @@ async function askCurrentQuestion(ctx: BotContext, questionnaire: Questionnaire)
   });
 }
 
+async function sendWelcomeMessage(ctx: BotContext): Promise<void> {
+  await ctx.reply(WELCOME_MESSAGE);
+
+  const clientId = ctx.client?.id;
+  if (!clientId) return;
+
+  await Message.create({
+    clientId,
+    type: 'info',
+    category: 'transactional',
+    content: WELCOME_MESSAGE,
+    channel: 'telegram',
+    deliveryStatus: 'sent',
+  });
+}
+
 /** Отправляет приветствие, создаёт анкету и задаёт первый вопрос. */
 export async function startOnboarding(
   ctx: BotContext,
@@ -175,7 +193,7 @@ export async function startOnboarding(
     await enrollment.update({ onboardingStatus: 'in_progress' });
   }
 
-  await ctx.reply(WELCOME_MESSAGE);
+  await sendWelcomeMessage(ctx);
 
   const questionnaire = await loadOrCreateQuestionnaire(enrollment);
   await askCurrentQuestion(ctx, questionnaire);

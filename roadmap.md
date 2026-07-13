@@ -5,12 +5,12 @@
 > Пометка `✓` внутри шагов = готова спецификация в `SA/`, **не** реализация кода.
 > Правило: при старте шага ставь `[~]`, при завершении — `[x]`, и синхронизируй статус здесь.
 
-**Текущий фокус:** Этап 3.8 завершён (state machine онбординга); следующий — 3.9–3.15 (детали welcome/validation/reminder/approximate) или сразу 3C (настройки уведомлений).
+**Текущий фокус:** Этап 3.9–3.13 завершён (welcome-сообщение, пошаговая анкета, валидация, сохранение ответов); следующий — 3.14–3.15 (напоминание при брошенной анкете и уточнение приблизительных ответов) или сразу 3C (настройки уведомлений).
 
 - [x] Этап 0 — Подготовка (спецификации SA: ERD, Domain, adminAPI готовы; шаг 0.5 ✓)
 - [x] Этап 1 — Каркас проекта (TS/ESLint/Prettier, БД, модели Client/Course/Enrollment/Notification/Message, логирование, health-check)
 - [x] Этап 2 — Telegram-бот минимальный (webhook/polling, /start, deep link)
-- [~] Этап 3 — Подключение клиента (3A ссылки — код и admin API полностью реализованы и проверены (3.1–3.6, включая полный набор admin-эндпоинтов adminAPI.md §4: courses, clients, enrollments, управление ссылками, expired-links); 3B онбординг+анкета; 3C настройки уведомлений)
+- [~] Этап 3 — Подключение клиента (3A ссылки — код и admin API полностью реализованы и проверены (3.1–3.6); 3B онбординг+анкета — welcome и анкета 3.9–3.13 реализованы; 3C настройки уведомлений — не начато)
 - [ ] Этап 4 — Ежедневное взаимодействие (планировщик/напоминания, дневник питания, вечернее напоминание)
 - [ ] Этап 5 — AI и рекомендации (абстракция AIEngine, анализ, генерация в мягком тоне, лимиты, rate limit)
 - [ ] Этап 6 — Неактивность и opt-out (ФТ-9..ФТ-12)
@@ -117,16 +117,21 @@ API: POST /admin/enrollments/:id/link/regenerate — новая ссылка п�
 Сущность Questionnaire + шаблон вопросов (минимум 5) — модель `packages/shared/src/models/questionnaire.ts`, миграция `migrations/20260710113800-create-questionnaires-table.ts`, шаблон `packages/shared/src/questionnaire/template.ts` (10 вопросов из SA/anketa.md)
 3.8 [x]
 State machine онбординга: welcome → questionnaire → settings — middleware загружает `ctx.enrollment`, сервис `packages/bot/src/services/onboarding.ts` управляет статусами, `packages/bot/src/handlers/onboarding-handler.ts` маршрутизирует сообщения, `/start` запускает onboarding после активации ссылки
-3.9
+3.9 [x]
 Приветственное сообщение (цель бота, ежедневные напоминания)
-3.10
+> Реализовано в `packages/bot/src/services/onboarding.ts`: `WELCOME_MESSAGE` и `sendWelcomeMessage`, сообщение логируется в `Message`.
+3.10 [x]
 Пошаговый диалог анкеты: вопрос 1
-3.11
+> Реализовано в `startOnboarding` (`packages/bot/src/services/onboarding.ts`): создаётся `Questionnaire` со статусом `in_progress` и задаётся первый вопрос из `packages/shared/src/questionnaire/template.ts`.
+3.11 [x]
 Валидация обязательного поля + повторный запрос
-3.12
+> Реализовано в `handleQuestionnaireAnswer`: при нераспознанном или пустом ответе отправляется пояснение и текущий вопрос повторяется.
+3.12 [x]
 Вопросы 2–5 (по одному шагу на вопрос)
-3.13
+> Реализован полный шаблон из 10 вопросов (`packages/shared/src/questionnaire/template.ts`, источник `SA/anketa.md`); `handleQuestionnaireAnswer` после каждого ответа переходит к следующему вопросу, пока не пройдут все.
+3.13 [x]
 Сохранение ответов + completedAt
+> Реализовано в `handleQuestionnaireAnswer`: ответы накапливаются в `answers`, при завершении обновляются `status: 'completed'`, `completedAt`, `lastAnswerAt`, а `ClientEnrollment` переводится в `onboardingStatus: 'settings_pending'`.
 3.14
 Обработка «бросила анкету на полпути» — напоминание через N часов (правило не описано в SA — нужно задать)
 3.15
