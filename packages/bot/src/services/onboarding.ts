@@ -59,11 +59,14 @@ function formatQuestion(question: QuestionnaireQuestion, index: number): string 
   return text;
 }
 
-function parseNumberAnswer(text: string): ParsedAnswer {
+function parseNumberAnswer(text: string, allowApproximate: boolean): ParsedAnswer | null {
   const normalized = text.replace(',', '.').trim();
   const numeric = Number(normalized);
   if (!Number.isNaN(numeric) && normalized !== '') {
     return { value: { value: numeric, approximate: false }, display: normalized };
+  }
+  if (!allowApproximate) {
+    return null;
   }
   return { value: { value: text.trim(), approximate: true }, display: text.trim() };
 }
@@ -133,7 +136,7 @@ function parseAnswer(question: QuestionnaireQuestion, text: string): ParsedAnswe
     case 'text':
       return { value: text.trim(), display: text.trim() };
     case 'number':
-      return parseNumberAnswer(text);
+      return parseNumberAnswer(text, question.allowApproximate ?? false);
     case 'single_choice':
       return parseSingleChoiceAnswer(question, text);
     case 'multi_choice':

@@ -36,12 +36,14 @@ export const QUESTIONNAIRE_QUESTIONS: QuestionnaireQuestion[] = [
     text: 'Сколько вам лет?',
     type: 'number',
     allowApproximate: true,
+    hint: 'Можно ответить примерно — например, «около 30»',
   },
   {
     id: 'weight',
     text: 'Укажите ваш текущий вес (кг)',
     type: 'number',
     allowApproximate: true,
+    hint: 'Можно указать примерный вес — например, «примерно 70 кг»',
   },
   {
     id: 'goal',
