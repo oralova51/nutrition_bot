@@ -70,6 +70,7 @@ erDiagram
         bigint telegramId "nullable, до активации ссылки"
         string telegramUsername "nullable"
         string email "nullable"
+        string phone "nullable, unique"
         timestamp registeredAt
         timestamp lastInteractionAt "nullable, ФТ-9/ФТ-11"
     }

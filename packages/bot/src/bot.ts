@@ -5,6 +5,7 @@ import { Bot, GrammyError, HttpError } from 'grammy';
 import type { Logger } from 'pino';
 import { createStartHandler } from './commands/start.js';
 import type { BotContext } from './context.js';
+import { handleSettingsCallback, handleSettingsCommand } from './handlers/settings-handler.js';
 import { onboardingMessageHandler } from './handlers/onboarding-handler.js';
 import { createClientContextMiddleware } from './middleware/client-context.js';
 
@@ -14,7 +15,9 @@ export function createBot(token: string, logger: Logger): Bot<BotContext> {
   bot.use(createClientContextMiddleware(logger));
 
   bot.command('start', createStartHandler(logger));
+  bot.command('settings', handleSettingsCommand);
 
+  bot.callbackQuery(/^settings:/, handleSettingsCallback);
   bot.on('message:text', onboardingMessageHandler);
 
   bot.catch((err) => {

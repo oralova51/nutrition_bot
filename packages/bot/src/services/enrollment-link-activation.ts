@@ -8,6 +8,7 @@ import {
   ClientEnrollment,
   EnrollmentLink,
   EnrollmentLinkAttempt,
+  getSequelize,
   type EnrollmentLinkAttemptResult,
 } from '@nutrition-bot/shared';
 import type { Logger } from 'pino';
@@ -22,7 +23,13 @@ export type ActivationErrorCode =
   'INVALID_CODE' | 'LINK_EXPIRED' | 'ALREADY_USED' | 'ENROLLMENT_CANCELLED';
 
 export type ActivationResult =
-  | { success: true; enrollment: ClientEnrollment; clientId: string; onboardingStatus: string }
+  | {
+      success: true;
+      enrollment: ClientEnrollment;
+      client: Client;
+      clientId: string;
+      onboardingStatus: string;
+    }
   | { success: false; error: ActivationErrorCode };
 
 export interface ActivateEnrollmentLinkParams {
@@ -126,18 +133,51 @@ export async function activateEnrollmentLink(
   }
 
   const now = new Date();
-  await link.update({ status: 'used', usedAt: now, usedByTelegramId: telegramId.toString() });
-  await client.update({
-    telegramId: telegramId.toString(),
-    telegramUsername,
-    lastInteractionAt: now,
+
+  const existingClient = await Client.findOne({
+    where: { telegramId: telegramId.toString() },
   });
-  await logAttempt(link.id, telegramId, 'success');
+
+  await getSequelize().transaction(async (transaction) => {
+    await link.update(
+      { status: 'used', usedAt: now, usedByTelegramId: telegramId.toString() },
+      { transaction },
+    );
+
+    if (existingClient) {
+      if (existingClient.id !== client.id) {
+        await enrollment.update({ clientId: existingClient.id }, { transaction });
+      }
+      await existingClient.update({ telegramUsername, lastInteractionAt: now }, { transaction });
+    } else {
+      await client.update(
+        { telegramId: telegramId.toString(), telegramUsername, lastInteractionAt: now },
+        { transaction },
+      );
+    }
+
+    await EnrollmentLinkAttempt.create(
+      { linkId: link.id, telegramId: telegramId.toString(), result: 'success' },
+      { transaction },
+    );
+  });
+
+  const actualClient = existingClient ?? client;
+  const finalClient = await Client.findByPk(actualClient.id);
+  if (!finalClient) {
+    throw new Error(`Client ${actualClient.id} не найден после активации ссылки`);
+  }
+
+  const finalEnrollment = await ClientEnrollment.findByPk(enrollment.id);
+  if (!finalEnrollment) {
+    throw new Error(`ClientEnrollment ${enrollment.id} не найден после активации ссылки`);
+  }
 
   return {
     success: true,
-    enrollment,
-    clientId: client.id,
-    onboardingStatus: enrollment.onboardingStatus,
+    enrollment: finalEnrollment,
+    client: finalClient,
+    clientId: finalClient.id,
+    onboardingStatus: finalEnrollment.onboardingStatus,
   };
 }

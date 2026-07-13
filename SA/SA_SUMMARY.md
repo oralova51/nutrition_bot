@@ -35,7 +35,7 @@ Telegram-бот «Виртуальный консультант по питан�
 
 ### Сущности и ключевые поля
 
-- **Client:** `id, firstName, lastName, telegramId?(bigint), telegramUsername?, email?, registeredAt, lastInteractionAt?`
+- **Client:** `id, firstName, lastName, telegramId?(bigint), telegramUsername?, email?, phone?(unique), registeredAt, lastInteractionAt?`
 - **Course:** `id, name, durationDays, startDate, endDate`
 - **GoalTemplate:** `id, courseId, type(weight_loss|muscle_gain|metabolism|health), description`
 - **ClientEnrollment:** `id, clientId, courseId, startDate, endDate, status(active|paused|completed|cancelled), onboardingStatus(pending|in_progress|settings_pending|completed)`

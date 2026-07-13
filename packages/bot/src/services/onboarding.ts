@@ -11,6 +11,7 @@ import {
   TOTAL_QUESTIONNAIRE_QUESTIONS,
   type QuestionnaireQuestion,
 } from '@nutrition-bot/shared';
+import { startSettingsWizard } from '../handlers/settings-handler.js';
 import type { BotContext } from '../context.js';
 
 const WELCOME_MESSAGE =
@@ -23,9 +24,6 @@ const WELCOME_MESSAGE =
 const COMPLETED_MESSAGE =
   'Спасибо! Анкета заполнена 🎉\n\n' +
   'Теперь настроим уведомления, чтобы я не беспокоил вас в неудобное время.';
-
-const SETTINGS_PENDING_MESSAGE =
-  'Сейчас мы настроим расписание напоминаний. Отправьте /settings, когда будете готовы.';
 
 const EMPTY_ANSWER_MESSAGE = 'Пожалуйста, напишите ответ на вопрос.';
 const INVALID_OPTION_MESSAGE = 'Не совсем понял. Выберите один из предложенных вариантов.';
@@ -249,6 +247,7 @@ export async function handleQuestionnaireAnswer(
       completedAt: now,
     });
     await completeQuestionnaire(ctx, enrollment);
+    await startSettingsWizard(ctx);
     return;
   }
 
@@ -268,5 +267,4 @@ export async function completeQuestionnaire(
 ): Promise<void> {
   await enrollment.update({ onboardingStatus: 'settings_pending' });
   await ctx.reply(COMPLETED_MESSAGE);
-  await ctx.reply(SETTINGS_PENDING_MESSAGE);
 }

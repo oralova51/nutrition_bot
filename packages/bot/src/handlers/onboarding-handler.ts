@@ -3,11 +3,11 @@
 
 import type { BotContext } from '../context.js';
 import {
-  completeQuestionnaire,
   continueQuestionnaire,
   handleQuestionnaireAnswer,
   startOnboarding,
 } from '../services/onboarding.js';
+import { startSettingsWizard } from './settings-handler.js';
 
 const NO_ENROLLMENT_MESSAGE =
   'У вас пока нет активного курса. Обратитесь к администратору студии — он вышлет персональную ссылку-приглашение.';
@@ -43,9 +43,8 @@ export async function onboardingMessageHandler(ctx: BotContext): Promise<void> {
       break;
     }
     case 'settings_pending':
-      // Переход к настройкам уведомлений (ФТ-3) реализуется на этапе 3C.
-      // Повторное сообщение напоминает клиенту, что нужно настроить уведомления.
-      await completeQuestionnaire(ctx, ctx.enrollment);
+      // Переход к настройкам уведомлений (ФТ-3): запускаем wizard.
+      await startSettingsWizard(ctx);
       break;
     case 'completed':
       // Основной режим (этап 4) — пока нет обработчика, ничего не делаем.

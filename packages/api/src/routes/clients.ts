@@ -60,6 +60,7 @@ export function createClientRoutes(botUsername: string): RouteDefinition[] {
           firstName: requireString(body, 'firstName'),
           lastName: requireString(body, 'lastName'),
           email: optionalString(body, 'email'),
+          phone: optionalString(body, 'phone'),
           courseId: requireString(body, 'courseId'),
           enrollmentStartDate: requireIsoDate(body, 'enrollmentStartDate'),
         });

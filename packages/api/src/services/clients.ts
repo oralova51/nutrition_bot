@@ -31,6 +31,7 @@ export interface CreateClientInput {
   firstName: string;
   lastName: string;
   email: string | null;
+  phone: string | null;
   courseId: string;
   enrollmentStartDate: string;
 }
@@ -61,6 +62,7 @@ export async function createClientWithEnrollment(
         firstName: input.firstName,
         lastName: input.lastName,
         email: input.email,
+        phone: input.phone,
       },
       { transaction },
     );
@@ -87,6 +89,7 @@ export interface ClientCreatedView {
     firstName: string;
     lastName: string;
     email: string | null;
+    phone: string | null;
     telegramId: number | null;
     registeredAt: string;
   };
@@ -107,6 +110,7 @@ export function serializeCreatedClient(result: CreateClientResult): ClientCreate
       firstName: result.client.firstName,
       lastName: result.client.lastName,
       email: result.client.email,
+      phone: result.client.phone,
       telegramId: toNullableNumber(result.client.telegramId),
       registeredAt: result.client.registeredAt.toISOString(),
     },
@@ -390,6 +394,7 @@ export interface ClientDetailView {
   firstName: string;
   lastName: string;
   email: string | null;
+  phone: string | null;
   telegramId: number | null;
   telegramUsername: string | null;
   registeredAt: string;
@@ -437,6 +442,7 @@ export async function getClientDetail(clientId: string): Promise<ClientDetailVie
     firstName: client.firstName,
     lastName: client.lastName,
     email: client.email,
+    phone: client.phone,
     telegramId: toNullableNumber(client.telegramId),
     telegramUsername: client.telegramUsername,
     registeredAt: client.registeredAt.toISOString(),

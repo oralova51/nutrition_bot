@@ -18,6 +18,7 @@ export class Client extends Model<InferAttributes<Client>, InferCreationAttribut
   declare telegramId: string | null;
   declare telegramUsername: string | null;
   declare email: string | null;
+  declare phone: string | null;
   declare registeredAt: CreationOptional<Date>;
   declare lastInteractionAt: Date | null;
 }
@@ -50,6 +51,11 @@ export function initClientModel(sequelize: Sequelize): typeof Client {
       email: {
         type: DataTypes.STRING(255),
         allowNull: true,
+      },
+      phone: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        unique: true,
       },
       registeredAt: {
         type: DataTypes.DATE,

@@ -68,6 +68,8 @@ export function createStartHandler(
           { telegramId, enrollmentId: result.enrollment.id, clientId: result.clientId },
           'Ссылка-приглашение активирована',
         );
+        ctx.client = result.client;
+        ctx.enrollment = result.enrollment;
         await ctx.reply(ACTIVATION_SUCCESS_MESSAGE);
         await startOnboarding(ctx, result.enrollment);
         return;
