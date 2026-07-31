@@ -12,6 +12,7 @@ import { Message, initMessageModel } from './message.js';
 import { NotificationSettings, initNotificationSettingsModel } from './notification-settings.js';
 import { NutritionDiary, initNutritionDiaryModel } from './nutrition-diary.js';
 import { Questionnaire, initQuestionnaireModel } from './questionnaire.js';
+import { Recommendation, initRecommendationModel } from './recommendation.js';
 
 export { Client } from './client.js';
 export {
@@ -62,6 +63,15 @@ export {
   QUESTIONNAIRE_STATUSES,
   type QuestionnaireStatus,
 } from './questionnaire.js';
+export {
+  Recommendation,
+  RECOMMENDATION_PRIORITIES,
+  RECOMMENDATION_STATUSES,
+  RECOMMENDATION_TYPES,
+  type RecommendationPriority,
+  type RecommendationStatus,
+  type RecommendationType,
+} from './recommendation.js';
 
 let modelsInitialized = false;
 
@@ -104,6 +114,18 @@ function initAssociations(): void {
 
   EnrollmentLink.hasMany(EnrollmentLinkAttempt, { foreignKey: 'linkId', as: 'attempts' });
   EnrollmentLinkAttempt.belongsTo(EnrollmentLink, { foreignKey: 'linkId', as: 'link' });
+
+  Client.hasMany(Recommendation, { foreignKey: 'clientId', as: 'recommendations' });
+  Recommendation.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
+
+  NutritionDiary.hasMany(Recommendation, { foreignKey: 'nutritionDiaryId', as: 'recommendations' });
+  Recommendation.belongsTo(NutritionDiary, { foreignKey: 'nutritionDiaryId', as: 'nutritionDiary' });
+
+  Questionnaire.hasMany(Recommendation, { foreignKey: 'questionnaireId', as: 'recommendations' });
+  Recommendation.belongsTo(Questionnaire, { foreignKey: 'questionnaireId', as: 'questionnaire' });
+
+  Recommendation.hasMany(Message, { foreignKey: 'recommendationId', as: 'messages' });
+  Message.belongsTo(Recommendation, { foreignKey: 'recommendationId', as: 'recommendation' });
 }
 
 /** Регистрирует все Sequelize-модели на переданном экземпляре. */
@@ -117,6 +139,7 @@ export function initModels(sequelize: Sequelize): void {
   initEnrollmentLinkModel(sequelize);
   initEnrollmentLinkAttemptModel(sequelize);
   initQuestionnaireModel(sequelize);
+  initRecommendationModel(sequelize);
   initAssociations();
   modelsInitialized = true;
 }

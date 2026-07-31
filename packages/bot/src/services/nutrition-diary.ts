@@ -4,8 +4,16 @@
 
 import { fromZonedTime, format, toZonedTime } from 'date-fns-tz';
 import { Op } from 'sequelize';
-import { NutritionDiary, NotificationSettings, sendTelegramMessage } from '@nutrition-bot/shared';
+import { processDiaryEntry } from '@nutrition-bot/ai';
+import {
+  createLogger,
+  NutritionDiary,
+  NotificationSettings,
+  sendTelegramMessage,
+} from '@nutrition-bot/shared';
 import type { BotContext } from '../context.js';
+
+const logger = createLogger('nutrition-diary');
 
 const CONFIRMATION_MESSAGE = 'Спасибо, записал! 🍽️';
 const PHOTO_CONFIRMATION_MESSAGE = 'Спасибо, записал фото! 🍽️';
@@ -68,13 +76,18 @@ export async function handleNutritionDiaryEntry(ctx: BotContext, text: string): 
   }
 
   const parsed = parseDiaryEntry(text, timezone);
-  await NutritionDiary.create({
+  const entry = await NutritionDiary.create({
     clientEnrollmentId: enrollment.id,
     clientId: client.id,
     mealAt: parsed.mealAt,
     description: parsed.description,
     approxCalories: parsed.approxCalories,
     status: 'filled',
+  });
+
+  // Анализ AI запускается асинхронно, не блокирует ответ пользователю (roadmap 5.2).
+  void processDiaryEntry(entry.id).catch((err: unknown) => {
+    logger.error({ err, entryId: entry.id }, 'Ошибка асинхронного анализа дневника');
   });
 
   await sendTelegramMessage({
@@ -258,7 +271,7 @@ export async function handleNutritionDiaryPhoto(ctx: BotContext): Promise<void> 
   const description = ctx.message?.caption?.trim() ?? null;
   const timezone = await resolveClientTimezone(client.id);
 
-  await NutritionDiary.create({
+  const entry = await NutritionDiary.create({
     clientEnrollmentId: enrollment.id,
     clientId: client.id,
     mealAt: getCurrentZonedTime(timezone),
@@ -266,6 +279,12 @@ export async function handleNutritionDiaryPhoto(ctx: BotContext): Promise<void> 
     hasPhoto: true,
     photoRef: fileId,
     status: 'filled',
+  });
+
+  // Анализ AI запускается асинхронно, не блокирует ответ пользователю (roadmap 5.2).
+  // OCR/vision отложен (roadmap 5.11), поэтому фото анализируется по подписи/контексту.
+  void processDiaryEntry(entry.id).catch((err: unknown) => {
+    logger.error({ err, entryId: entry.id }, 'Ошибка асинхронного анализа дневника (фото)');
   });
 
   await sendTelegramMessage({

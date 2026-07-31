@@ -181,6 +181,7 @@ erDiagram
         uuid questionnaireId FK "nullable"
         string type "product|habit|regimen|calories"
         string priority "critical|high|medium|low"
+        text content "nullable, текст рекомендации"
         string status "sent|read|applied|dismissed"
         timestamp createdAt
     }

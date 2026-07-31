@@ -13,6 +13,7 @@ import { resolveBotToken } from './config.js';
 import { runDailyReminderJob } from './jobs/daily-reminder.js';
 import { runEveningReminderJob } from './jobs/evening-reminder-job.js';
 import { runPendingDiaryJob } from './jobs/pending-diary-job.js';
+import { runRecommendationDeliveryJob } from './jobs/recommendation-delivery-job.js';
 import { runQuestionnaireReminderJob } from './jobs/questionnaire-reminder.js';
 
 export const SERVICE_NAME = 'scheduler';
@@ -54,6 +55,14 @@ async function main(): Promise<void> {
   schedule('*/30 * * * *', () => {
     void runEveningReminderJob(logger).catch((err: unknown) => {
       logger.error({ err }, 'Вечернее напоминание: необработанная ошибка job');
+    });
+  });
+
+  // Отложенная отправка рекомендаций medium/low (roadmap 5.8).
+  // Проверяем каждые 30 минут, чтобы попасть в 20:00 для каждого часового пояса.
+  schedule('*/30 * * * *', () => {
+    void runRecommendationDeliveryJob(logger).catch((err: unknown) => {
+      logger.error({ err }, 'Отложенная отправка рекомендаций: необработанная ошибка job');
     });
   });
 

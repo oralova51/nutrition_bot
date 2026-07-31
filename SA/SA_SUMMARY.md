@@ -46,7 +46,7 @@ Telegram-бот «Виртуальный консультант по питан�
 - **Habit:** `id, clientId, description, status(active|inactive), frequency(daily|weekdays|custom)`
 - **NotificationSettings** (1:1 к Client): `id, clientId(unique), reminderTime(HH:mm), frequency(daily|every_other_day|three_per_week|custom_days), enabledTypes(diary|recommendations|weekly_report), timezone(IANA, def Europe/Moscow), enabled, disabledReason?(user_request|inactivity)`
 - **Questionnaire:** `id, clientEnrollmentId, clientId(denorm), answers(json), currentQuestion, status(in_progress|completed), lastAnswerAt?, lastReminderAt?, completedAt?, analysisResult?(json)`
-- **Recommendation:** `id, clientId, nutritionDiaryId?, questionnaireId?(ровно один из двух), type(product|habit|regimen|calories), priority(critical|high|medium|low), status(sent|read|applied|dismissed), createdAt`
+- **Recommendation:** `id, clientId, nutritionDiaryId?, questionnaireId?(ровно один из двух), type(product|habit|regimen|calories), priority(critical|high|medium|low), content?(текст рекомендации), status(sent|read|applied|dismissed), createdAt`
 - **Message:** `id, clientId, recommendationId?, type(recommendation|reminder|questionnaire_reminder|evening_reminder|report|info), category(transactional|optional), content, channel(telegram|whatsapp|max), deliveryStatus(sent|delivered|read|delivery_failed), retryCount(0..3), createdAt`
 - **Reminder:** `id, clientId, type(fill_diary|check_recommendation), schedule, status(active|inactive|done)`
 - **Feedback:** `id, clientId, recommendationId, rating(1..5), comment?(обязателен при 1-3), isApplied?, createdAt`
