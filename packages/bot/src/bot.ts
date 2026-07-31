@@ -7,6 +7,7 @@ import { createStartHandler } from './commands/start.js';
 import type { BotContext } from './context.js';
 import { handleSettingsCallback, handleSettingsCommand } from './handlers/settings-handler.js';
 import { onboardingMessageHandler } from './handlers/onboarding-handler.js';
+import { photoMessageHandler } from './handlers/photo-handler.js';
 import { createClientContextMiddleware } from './middleware/client-context.js';
 
 export function createBot(token: string, logger: Logger): Bot<BotContext> {
@@ -19,6 +20,7 @@ export function createBot(token: string, logger: Logger): Bot<BotContext> {
 
   bot.callbackQuery(/^settings:/, handleSettingsCallback);
   bot.on('message:text', onboardingMessageHandler);
+  bot.on('message:photo', photoMessageHandler);
 
   bot.catch((err) => {
     const { ctx, error } = err;

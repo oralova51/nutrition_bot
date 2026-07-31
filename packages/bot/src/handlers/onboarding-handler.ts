@@ -2,6 +2,7 @@
 // roadmap 3.8: state machine онбординга — welcome → questionnaire → settings.
 
 import type { BotContext } from '../context.js';
+import { handleNutritionDiaryEntry } from '../services/nutrition-diary.js';
 import {
   continueQuestionnaire,
   handleQuestionnaireAnswer,
@@ -46,9 +47,15 @@ export async function onboardingMessageHandler(ctx: BotContext): Promise<void> {
       // Переход к настройкам уведомлений (ФТ-3): запускаем wizard.
       await startSettingsWizard(ctx);
       break;
-    case 'completed':
-      // Основной режим (этап 4) — пока нет обработчика, ничего не делаем.
+    case 'completed': {
+      // Основной режим: приём записей дневника питания (roadmap 4.9–4.12).
+      if (text === '') {
+        await ctx.reply('Напишите, пожалуйста, что вы съели — я запишу это в дневник.');
+        return;
+      }
+      await handleNutritionDiaryEntry(ctx, text);
       break;
+    }
     default:
       // Для unknown status продолжаем анкету как наиболее безопасный fallback.
       await continueQuestionnaire(ctx, ctx.enrollment);

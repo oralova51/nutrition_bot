@@ -10,6 +10,7 @@ import {
 import { EnrollmentLink, initEnrollmentLinkModel } from './enrollment-link.js';
 import { Message, initMessageModel } from './message.js';
 import { NotificationSettings, initNotificationSettingsModel } from './notification-settings.js';
+import { NutritionDiary, initNutritionDiaryModel } from './nutrition-diary.js';
 import { Questionnaire, initQuestionnaireModel } from './questionnaire.js';
 
 export { Client } from './client.js';
@@ -42,6 +43,11 @@ export {
   type MessageChannel,
   type MessageType,
 } from './message.js';
+export {
+  NutritionDiary,
+  NUTRITION_DIARY_STATUSES,
+  type NutritionDiaryStatus,
+} from './nutrition-diary.js';
 export {
   NotificationSettings,
   DISABLED_REASONS,
@@ -81,6 +87,18 @@ function initAssociations(): void {
   Client.hasMany(Questionnaire, { foreignKey: 'clientId', as: 'questionnaires' });
   Questionnaire.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
 
+  ClientEnrollment.hasMany(NutritionDiary, {
+    foreignKey: 'clientEnrollmentId',
+    as: 'nutritionDiaries',
+  });
+  NutritionDiary.belongsTo(ClientEnrollment, {
+    foreignKey: 'clientEnrollmentId',
+    as: 'enrollment',
+  });
+
+  Client.hasMany(NutritionDiary, { foreignKey: 'clientId', as: 'nutritionDiaries' });
+  NutritionDiary.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
+
   ClientEnrollment.hasMany(EnrollmentLink, { foreignKey: 'enrollmentId', as: 'enrollmentLinks' });
   EnrollmentLink.belongsTo(ClientEnrollment, { foreignKey: 'enrollmentId', as: 'enrollment' });
 
@@ -95,6 +113,7 @@ export function initModels(sequelize: Sequelize): void {
   initClientEnrollmentModel(sequelize);
   initNotificationSettingsModel(sequelize);
   initMessageModel(sequelize);
+  initNutritionDiaryModel(sequelize);
   initEnrollmentLinkModel(sequelize);
   initEnrollmentLinkAttemptModel(sequelize);
   initQuestionnaireModel(sequelize);

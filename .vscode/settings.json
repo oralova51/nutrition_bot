@@ -18,5 +18,6 @@
       "name": "nutrition_lpg39_bot",
       "connectString": "postgresql://postgres.hnpokpvqvohbmgkreghj:Hjfk893:1!@:{}Ijv@aws-0-eu-north-1.pooler.supabase.com:5432/postgres"
     }
-  ]
+  ],
+  "postman.settings.dotenv-detection-notification-visibility": false
 }

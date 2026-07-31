@@ -48,7 +48,7 @@ export function createClientContextMiddleware(
       where: {
         clientId: client.id,
         status: ['active', 'paused', 'completed'],
-        onboardingStatus: ['pending', 'in_progress', 'settings_pending'],
+        onboardingStatus: ['pending', 'in_progress', 'settings_pending', 'completed'],
       },
       order: [['startDate', 'DESC']],
     });

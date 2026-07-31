@@ -11,6 +11,8 @@ import {
 } from '@nutrition-bot/shared';
 import { resolveBotToken } from './config.js';
 import { runDailyReminderJob } from './jobs/daily-reminder.js';
+import { runEveningReminderJob } from './jobs/evening-reminder-job.js';
+import { runPendingDiaryJob } from './jobs/pending-diary-job.js';
 import { runQuestionnaireReminderJob } from './jobs/questionnaire-reminder.js';
 
 export const SERVICE_NAME = 'scheduler';
@@ -36,6 +38,22 @@ async function main(): Promise<void> {
   schedule('*/2 * * * *', () => {
     void runQuestionnaireReminderJob(logger).catch((err: unknown) => {
       logger.error({ err }, 'Напоминание об анкете: необработанная ошибка job');
+    });
+  });
+
+  // Создание pending-записей дневника за день без данных (roadmap 4.14).
+  // 00:30 UTC = после полуночи для всех российских часовых поясов.
+  schedule('30 0 * * *', () => {
+    void runPendingDiaryJob(logger).catch((err: unknown) => {
+      logger.error({ err }, 'Pending-записи дневника: необработанная ошибка job');
+    });
+  });
+
+  // Вечернее напоминание о незаполненном дневнике (roadmap 4.16–4.19).
+  // Проверяем каждые 30 минут, чтобы попасть в 20:00 для каждого часового пояса.
+  schedule('*/30 * * * *', () => {
+    void runEveningReminderJob(logger).catch((err: unknown) => {
+      logger.error({ err }, 'Вечернее напоминание: необработанная ошибка job');
     });
   });
 
