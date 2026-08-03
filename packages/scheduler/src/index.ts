@@ -12,6 +12,8 @@ import {
 import { resolveBotToken } from './config.js';
 import { runDailyReminderJob } from './jobs/daily-reminder.js';
 import { runEveningReminderJob } from './jobs/evening-reminder-job.js';
+import { runInactivityDeactivationJob } from './jobs/inactivity-deactivation-job.js';
+import { runInactivityWarningJob } from './jobs/inactivity-warning-job.js';
 import { runPendingDiaryJob } from './jobs/pending-diary-job.js';
 import { runRecommendationDeliveryJob } from './jobs/recommendation-delivery-job.js';
 import { runQuestionnaireReminderJob } from './jobs/questionnaire-reminder.js';
@@ -63,6 +65,21 @@ async function main(): Promise<void> {
   schedule('*/30 * * * *', () => {
     void runRecommendationDeliveryJob(logger).catch((err: unknown) => {
       logger.error({ err }, 'Отложенная отправка рекомендаций: необработанная ошибка job');
+    });
+  });
+
+  // Предупреждение о неактивности (roadmap 6.3, ФТ-9): 48 ч молчания → 10:00 по часовому поясу клиента.
+  // Проверяем каждые 30 минут, чтобы попасть в 10:00 для каждого часового пояса.
+  schedule('*/30 * * * *', () => {
+    void runInactivityWarningJob(logger).catch((err: unknown) => {
+      logger.error({ err }, 'Предупреждение о неактивности: необработанная ошибка job');
+    });
+  });
+
+  // Автоотключение уведомлений по неактивности (roadmap 6.4–6.5, ФТ-10): 72+ ч молчания → off + лог.
+  schedule('*/30 * * * *', () => {
+    void runInactivityDeactivationJob(logger).catch((err: unknown) => {
+      logger.error({ err }, 'Автоотключение уведомлений: необработанная ошибка job');
     });
   });
 

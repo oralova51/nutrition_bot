@@ -15,6 +15,7 @@ export const MESSAGE_TYPES = [
   'reminder',
   'questionnaire_reminder',
   'evening_reminder',
+  'inactivity_warning',
   'report',
   'info',
 ] as const;

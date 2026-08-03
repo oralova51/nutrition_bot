@@ -5,6 +5,7 @@
 
 import type { CommandContext } from 'grammy';
 import type { Logger } from 'pino';
+import { NotificationSettings } from '@nutrition-bot/shared';
 import type { BotContext } from '../context.js';
 import {
   activateEnrollmentLink,
@@ -16,6 +17,8 @@ const AWAITING_LINK_MESSAGE =
   'Привет! Я бот-консультант по питанию 🙂\n\n' +
   'Чтобы начать работу, мне нужна персональная ссылка-приглашение от администратора вашей студии. ' +
   'Как только она придёт — перейдите по ней, и мы продолжим отсюда.';
+
+const WELCOME_BACK_MESSAGE = 'Привет снова! Уведомления включены, продолжим работу над питанием 🙂';
 
 const ACTIVATION_SUCCESS_MESSAGE =
   'Отлично, вы подключены к курсу! Сейчас познакомимся поближе и зададим несколько коротких вопросов.';
@@ -46,7 +49,15 @@ export function createStartHandler(
         { telegramId, hasClient: Boolean(ctx.client) },
         'Получена команда /start без ссылки-приглашения',
       );
-      await ctx.reply(AWAITING_LINK_MESSAGE);
+      if (ctx.client) {
+        const settings = await NotificationSettings.findOne({ where: { clientId: ctx.client.id } });
+        if (settings && !settings.enabled) {
+          await settings.update({ enabled: true, disabledReason: null });
+        }
+        await ctx.reply(WELCOME_BACK_MESSAGE);
+      } else {
+        await ctx.reply(AWAITING_LINK_MESSAGE);
+      }
       return;
     }
 
