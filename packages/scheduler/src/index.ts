@@ -12,6 +12,7 @@ import {
 import { resolveBotToken } from './config.js';
 import { runDailyReminderJob } from './jobs/daily-reminder.js';
 import { runEveningReminderJob } from './jobs/evening-reminder-job.js';
+import { runCourseCompletionJob } from './jobs/course-completion-job.js';
 import { runInactivityDeactivationJob } from './jobs/inactivity-deactivation-job.js';
 import { runInactivityWarningJob } from './jobs/inactivity-warning-job.js';
 import { runPendingDiaryJob } from './jobs/pending-diary-job.js';
@@ -80,6 +81,14 @@ async function main(): Promise<void> {
   schedule('*/30 * * * *', () => {
     void runInactivityDeactivationJob(logger).catch((err: unknown) => {
       logger.error({ err }, 'Автоотключение уведомлений: необработанная ошибка job');
+    });
+  });
+
+  // Завершение курса (roadmap 7.1–7.2, ФТ-13): перевод в completed и остановка регулярных напоминаний.
+  // 00:01 UTC — после полуночи для российских часовых поясов, до утреннего напоминания.
+  schedule('1 0 * * *', () => {
+    void runCourseCompletionJob(logger).catch((err: unknown) => {
+      logger.error({ err }, 'Завершение курса: необработанная ошибка job');
     });
   });
 

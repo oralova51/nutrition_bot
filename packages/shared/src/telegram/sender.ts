@@ -14,6 +14,11 @@ const MAX_RETRIES = 3;
 
 export type TelegramParseMode = 'HTML' | 'Markdown' | 'MarkdownV2';
 
+export interface InlineKeyboardButton {
+  text: string;
+  callback_data: string;
+}
+
 export interface TelegramMessagePayload {
   telegramId: string;
   text: string;
@@ -21,6 +26,7 @@ export interface TelegramMessagePayload {
   type: MessageType;
   category: MessageCategory;
   parseMode?: TelegramParseMode;
+  replyMarkup?: { inline_keyboard: InlineKeyboardButton[][] };
 }
 
 export interface TelegramSendResult {
@@ -66,6 +72,7 @@ export async function sendTelegramMessage(
   try {
     const telegramMessage = await getBot().api.sendMessage(payload.telegramId, payload.text, {
       parse_mode: payload.parseMode ?? 'HTML',
+      ...(payload.replyMarkup ? { reply_markup: payload.replyMarkup } : {}),
     });
     return { telegramMessageId: telegramMessage.message_id, message };
   } catch (err) {
@@ -91,6 +98,7 @@ export async function sendTelegramMessageWithRetry(
   try {
     const telegramMessage = await getBot().api.sendMessage(payload.telegramId, payload.text, {
       parse_mode: payload.parseMode ?? 'HTML',
+      ...(payload.replyMarkup ? { reply_markup: payload.replyMarkup } : {}),
     });
     return { telegramMessageId: telegramMessage.message_id, message };
   } catch (err) {

@@ -2,6 +2,7 @@
 // roadmap 3.8: state machine онбординга — welcome → questionnaire → settings.
 
 import type { BotContext } from '../context.js';
+import { handleFeedbackComment } from './feedback-handler.js';
 import { handleNutritionDiaryEntry } from '../services/nutrition-diary.js';
 import {
   continueQuestionnaire,
@@ -48,6 +49,11 @@ export async function onboardingMessageHandler(ctx: BotContext): Promise<void> {
       await startSettingsWizard(ctx);
       break;
     case 'completed': {
+      // Сначала проверяем, не является ли сообщение комментарием к низкой оценке (ФТ-16).
+      if (text !== '' && (await handleFeedbackComment(ctx, text))) {
+        return;
+      }
+
       // Основной режим: приём записей дневника питания (roadmap 4.9–4.12).
       if (text === '') {
         await ctx.reply('Напишите, пожалуйста, что вы съели — я запишу это в дневник.');

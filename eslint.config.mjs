@@ -13,7 +13,7 @@ export default defineConfig(
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['scripts/*.ts', 'migrations/*.ts'],
+          allowDefaultProject: ['scripts/*.ts', 'migrations/*.ts', 'vitest.config.ts'],
           defaultProject: 'tsconfig.scripts.json',
           // Список миграций будет расти на каждом этапе roadmap — поднимаем лимит,
           // чтобы не приходилось трогать конфиг при каждой новой миграции.
@@ -21,6 +21,13 @@ export default defineConfig(
         },
         tsconfigRootDir: import.meta.dirname,
       },
+    },
+  },
+  {
+    files: ['**/*.test.ts'],
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/unbound-method': 'off',
     },
   },
   eslintConfigPrettier,

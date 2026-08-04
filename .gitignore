@@ -54,3 +54,11 @@ uploads/
 
 # Docker (local overrides)
 docker-compose.override.yml
+
+.diffs/
+reviews/diffs/
+*.diff
+*.patch
+.diffs/
+.reviews/
+.agents/tasks/

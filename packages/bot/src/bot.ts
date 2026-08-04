@@ -5,6 +5,7 @@ import { Bot, GrammyError, HttpError } from 'grammy';
 import type { Logger } from 'pino';
 import { createStartHandler } from './commands/start.js';
 import type { BotContext } from './context.js';
+import { handleFeedbackCallback } from './handlers/feedback-handler.js';
 import {
   handleOptOutCallback,
   handlePauseCommand,
@@ -27,6 +28,8 @@ export function createBot(token: string, logger: Logger): Bot<BotContext> {
 
   bot.callbackQuery(/^settings:/, handleSettingsCallback);
   bot.callbackQuery(/^(stop|pause):/, handleOptOutCallback);
+  bot.callbackQuery(/^feedback:/, handleFeedbackCallback);
+  bot.callbackQuery(/^review:/, handleFeedbackCallback);
   bot.on('message:text', onboardingMessageHandler);
   bot.on('message:photo', photoMessageHandler);
 

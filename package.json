@@ -22,6 +22,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"packages/**/*.{ts,json}\" \"scripts/**/*.ts\" \"migrations/**/*.ts\" \"*.{json,mjs}\" \"tsconfig*.json\" \".prettierrc.json\"",
     "format:check": "prettier --check \"packages/**/*.{ts,json}\" \"scripts/**/*.ts\" \"migrations/**/*.ts\" \"*.{json,mjs}\" \"tsconfig*.json\" \".prettierrc.json\"",
+    "test": "vitest run",
     "db:migrate": "tsx scripts/migrate.ts up",
     "db:migrate:undo": "tsx scripts/migrate.ts down",
     "db:migrate:status": "tsx scripts/migrate.ts status",
@@ -45,6 +46,7 @@
     "prettier": "^3.7.4",
     "tsx": "^4.23.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.49.0"
+    "typescript-eslint": "^8.49.0",
+    "vitest": "^4.1.10"
   }
 }

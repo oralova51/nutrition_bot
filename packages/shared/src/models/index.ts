@@ -8,11 +8,13 @@ import {
   initEnrollmentLinkAttemptModel,
 } from './enrollment-link-attempt.js';
 import { EnrollmentLink, initEnrollmentLinkModel } from './enrollment-link.js';
+import { Feedback, initFeedbackModel } from './feedback.js';
 import { Message, initMessageModel } from './message.js';
 import { NotificationSettings, initNotificationSettingsModel } from './notification-settings.js';
 import { NutritionDiary, initNutritionDiaryModel } from './nutrition-diary.js';
 import { Questionnaire, initQuestionnaireModel } from './questionnaire.js';
 import { Recommendation, initRecommendationModel } from './recommendation.js';
+import { Report, initReportModel } from './report.js';
 
 export { Client } from './client.js';
 export {
@@ -23,6 +25,7 @@ export {
   type OnboardingStatus,
 } from './client-enrollment.js';
 export { Course } from './course.js';
+export { Feedback } from './feedback.js';
 export {
   EnrollmentLink,
   ENROLLMENT_LINK_STATUSES,
@@ -72,6 +75,14 @@ export {
   type RecommendationStatus,
   type RecommendationType,
 } from './recommendation.js';
+export {
+  Report,
+  REPORT_TYPES,
+  type DiaryStats,
+  type Dynamics,
+  type ProblemArea,
+  type ReportType,
+} from './report.js';
 
 let modelsInitialized = false;
 
@@ -119,13 +130,28 @@ function initAssociations(): void {
   Recommendation.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
 
   NutritionDiary.hasMany(Recommendation, { foreignKey: 'nutritionDiaryId', as: 'recommendations' });
-  Recommendation.belongsTo(NutritionDiary, { foreignKey: 'nutritionDiaryId', as: 'nutritionDiary' });
+  Recommendation.belongsTo(NutritionDiary, {
+    foreignKey: 'nutritionDiaryId',
+    as: 'nutritionDiary',
+  });
 
   Questionnaire.hasMany(Recommendation, { foreignKey: 'questionnaireId', as: 'recommendations' });
   Recommendation.belongsTo(Questionnaire, { foreignKey: 'questionnaireId', as: 'questionnaire' });
 
   Recommendation.hasMany(Message, { foreignKey: 'recommendationId', as: 'messages' });
   Message.belongsTo(Recommendation, { foreignKey: 'recommendationId', as: 'recommendation' });
+
+  ClientEnrollment.hasMany(Report, { foreignKey: 'clientEnrollmentId', as: 'reports' });
+  Report.belongsTo(ClientEnrollment, { foreignKey: 'clientEnrollmentId', as: 'enrollment' });
+
+  Client.hasMany(Report, { foreignKey: 'clientId', as: 'reports' });
+  Report.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
+
+  Client.hasMany(Feedback, { foreignKey: 'clientId', as: 'feedbacks' });
+  Feedback.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
+
+  Recommendation.hasMany(Feedback, { foreignKey: 'recommendationId', as: 'feedbacks' });
+  Feedback.belongsTo(Recommendation, { foreignKey: 'recommendationId', as: 'recommendation' });
 }
 
 /** Регистрирует все Sequelize-модели на переданном экземпляре. */
@@ -140,6 +166,8 @@ export function initModels(sequelize: Sequelize): void {
   initEnrollmentLinkAttemptModel(sequelize);
   initQuestionnaireModel(sequelize);
   initRecommendationModel(sequelize);
+  initReportModel(sequelize);
+  initFeedbackModel(sequelize);
   initAssociations();
   modelsInitialized = true;
 }

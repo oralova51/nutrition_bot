@@ -49,6 +49,17 @@ export interface WebhookConfig {
   secretToken: string;
 }
 
+export interface ReviewUrls {
+  gis2: string;
+  yandex: string;
+}
+
+export function resolveReviewUrls(): ReviewUrls {
+  const gis2 = process.env.REVIEW_2GIS_URL ?? 'https://2gis.ru';
+  const yandex = process.env.REVIEW_YANDEX_URL ?? 'https://yandex.ru/maps';
+  return { gis2, yandex };
+}
+
 export function resolveWebhookConfig(): WebhookConfig {
   const url = process.env.WEBHOOK_URL;
   const secretToken = process.env.WEBHOOK_SECRET_TOKEN;
