@@ -1,0 +1,1094 @@
+{
+  "info": {
+    "name": "Этап 9 — Панели управления",
+    "description": "Коллекция для ручной проверки этапа 9 (админ-панель и панель специалиста).\nРеализованные endpoints отработают сразу, нереализованные вернут 404 до написания кода.\nПеред запуском задайте переменные: baseUrl, adminToken, botUsername.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "your-admin-api-token",
+      "type": "string"
+    },
+    {
+      "key": "botUsername",
+      "value": "your_bot_username",
+      "type": "string"
+    },
+    {
+      "key": "courseId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "clientId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "enrollmentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "linkId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01. Подготовка и базовые проверки",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Проверка, что API-сервис запущен. Не требует авторизации."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Response has status ok', function () {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.status).to.eql('ok');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create test course",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Тестовый курс 30 дней\",\n  \"durationDays\": 30,\n  \"startDate\": \"2026-08-01\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/courses",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "courses"]
+            },
+            "description": "Создаёт тестовый курс. Сохраняет courseId в переменную коллекции."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test('Course has id', function () {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.id).to.be.a('string');",
+                  "  pm.collectionVariables.set('courseId', json.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create test client",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Анна\",\n  \"lastName\": \"Иванова\",\n  \"email\": \"anna.test@example.com\",\n  \"courseId\": \"{{courseId}}\",\n  \"enrollmentStartDate\": \"2026-08-01\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/clients",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "clients"]
+            },
+            "description": "Создаёт клиента и enrollment. Сохраняет clientId и enrollmentId."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test('Client and enrollment created', function () {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.client.id).to.be.a('string');",
+                  "  pm.expect(json.enrollment.id).to.be.a('string');",
+                  "  pm.collectionVariables.set('clientId', json.client.id);",
+                  "  pm.collectionVariables.set('enrollmentId', json.enrollment.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02. Реализовано: клиенты и ссылки",
+      "item": [
+        {
+          "name": "List clients (no filters)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/clients",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "clients"]
+            },
+            "description": "Базовый список клиентов. Проверяем пагинацию и формат ответа."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Has data and pagination', function () {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.data).to.be.an('array');",
+                  "  pm.expect(json.pagination).to.be.an('object');",
+                  "  pm.expect(json.pagination.total).to.be.a('number');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "List clients with filter status=inactive",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/clients?status=inactive",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "clients"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "inactive"
+                }
+              ]
+            },
+            "description": "Фильтр по статусу inactive. Только что созданный клиент должен попасть сюда, потому что у него нет Telegram."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Inactive clients have no telegramId', function () {",
+                  "  const json = pm.response.json();",
+                  "  json.data.forEach(function (client) {",
+                  "    pm.expect(client.telegramId).to.be.oneOf([null, undefined]);",
+                  "  });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get client detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/clients/{{clientId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "clients", "{{clientId}}"]
+            },
+            "description": "Детали клиента. Здесь должно быть полное ФИ, в отличие от списка."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Has full name and enrollments', function () {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.firstName).to.be.a('string');",
+                  "  pm.expect(json.lastName).to.be.a('string');",
+                  "  pm.expect(json.enrollments).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create enrollment link",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/enrollments/{{enrollmentId}}/link",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "enrollments", "{{enrollmentId}}", "link"]
+            },
+            "description": "Генерация ссылки для enrollment. Сохраняет linkId."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test('Link is active and has URL', function () {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.link.status).to.eql('active');",
+                  "  pm.expect(json.link.url).to.include('t.me/{{botUsername}}');",
+                  "  pm.expect(json.link.url).to.include('enr_');",
+                  "  pm.collectionVariables.set('linkId', json.link.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create link again without force (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/enrollments/{{enrollmentId}}/link",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "enrollments", "{{enrollmentId}}", "link"]
+            },
+            "description": "Повторная генерация без force должна вернуть 409 ACTIVE_LINK_EXISTS."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 409', function () {",
+                  "  pm.response.to.have.status(409);",
+                  "});",
+                  "pm.test('Error code is ACTIVE_LINK_EXISTS', function () {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.error.code).to.eql('ACTIVE_LINK_EXISTS');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create link with force=true",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"force\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/enrollments/{{enrollmentId}}/link",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "enrollments", "{{enrollmentId}}", "link"]
+            },
+            "description": "Отзывает старую ссылку и создаёт новую. Сохраняет новый linkId."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test('New active link generated', function () {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.link.status).to.eql('active');",
+                  "  pm.expect(json.link.id).to.be.a('string');",
+                  "  pm.collectionVariables.set('linkId', json.link.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get enrollment link info",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/enrollments/{{enrollmentId}}/link",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "enrollments", "{{enrollmentId}}", "link"]
+            },
+            "description": "Показывает активную ссылку, историю и попытки использования."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Has active or null and history array', function () {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.active).to.satisfy(function (v) { return v === null || typeof v === 'object'; });",
+                  "  pm.expect(json.history).to.be.an('array');",
+                  "  pm.expect(json.attempts).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Revoke enrollment link",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/enrollments/{{enrollmentId}}/link/{{linkId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "enrollments", "{{enrollmentId}}", "link", "{{linkId}}"]
+            },
+            "description": "Отзывает активную ссылку. После этого статус становится revoked."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Status is revoked', function () {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.status).to.eql('revoked');",
+                  "  pm.expect(json.revokedAt).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Regenerate expired link (expect 422 if not expired)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/enrollments/{{enrollmentId}}/link/regenerate",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "enrollments", "{{enrollmentId}}", "link", "regenerate"]
+            },
+            "description": "Regenerate работает только для истёкших/отозванных ссылок. Если ссылка была отозвана на предыдущем шаге, regenerate создаст новую. Иначе — 422 LINK_STILL_ACTIVE."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Response is 201 or 422', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([201, 422]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get expired links",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/enrollments/expired-links",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "enrollments", "expired-links"]
+            },
+            "description": "Список enrollment'ов, у которых ссылка истекла и Telegram не привязан. Для проверки нужно вручную сделать ссылку expired в БД."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Has data and pagination', function () {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.data).to.be.an('array');",
+                  "  pm.expect(json.pagination).to.be.an('object');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03. Админ: дневник и аналитика (пока 404)",
+      "item": [
+        {
+          "name": "View diary (anonymized)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/enrollments/{{enrollmentId}}/diary?from=2026-08-01&to=2026-08-31",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "enrollments", "{{enrollmentId}}", "diary"],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2026-08-01"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-08-31"
+                }
+              ]
+            },
+            "description": "Просмотр дневника без имени клиента. После реализации должен вернуть 200 и записи. Сейчас вернёт 404."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 or 404', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Recommendation compliance statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/statistics/recommendations?from=2026-08-01&to=2026-08-31",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "statistics", "recommendations"],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2026-08-01"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-08-31"
+                }
+              ]
+            },
+            "description": "Статистика соблюдения рекомендаций. После реализации вернёт 200 и агрегаты."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 or 404', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Critical feedback inbox",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/feedback/critical?unresolvedOnly=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "feedback", "critical"],
+              "query": [
+                {
+                  "key": "unresolvedOnly",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "Feedback с оценками 1–3. После реализации вернёт 200."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 or 404', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Renewal offers list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/renewal-offers",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "renewal-offers"]
+            },
+            "description": "Список предложений продлить курс. После реализации вернёт 200."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 or 404', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Export clients CSV",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/export/clients?format=csv&status=all",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "export", "clients"],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "csv"
+                },
+                {
+                  "key": "status",
+                  "value": "all"
+                }
+              ]
+            },
+            "description": "Выгрузка клиентов в CSV. После реализации вернёт файл."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 or 404', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Failed messages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/messages/failed?retryCount=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "messages", "failed"],
+              "query": [
+                {
+                  "key": "retryCount",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "Недоставленные сообщения. После реализации вернёт 200."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 or 404', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04. Специалист: отчёты и прогресс (пока 404)",
+      "item": [
+        {
+          "name": "Get client reports",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/specialist/clients/{{clientId}}/reports?type=final",
+              "host": ["{{baseUrl}}"],
+              "path": ["specialist", "clients", "{{clientId}}", "reports"],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "final"
+                }
+              ]
+            },
+            "description": "Итоговые отчёты по клиенту. После реализации вернёт 200."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 or 404', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get client compliance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/specialist/clients/{{clientId}}/compliance",
+              "host": ["{{baseUrl}}"],
+              "path": ["specialist", "clients", "{{clientId}}", "compliance"]
+            },
+            "description": "% соблюдения рекомендаций. После реализации вернёт 200."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 or 404', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Top nutrition problems",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/specialist/statistics/problems?from=2026-08-01&to=2026-08-31&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["specialist", "statistics", "problems"],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2026-08-01"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-08-31"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "ТОП проблем в питании по клиентам специалиста. После реализации вернёт 200."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 or 404', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Activity statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/specialist/statistics/activity?from=2026-08-01&to=2026-08-31&minFillRate=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["specialist", "statistics", "activity"],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2026-08-01"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-08-31"
+                },
+                {
+                  "key": "minFillRate",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "Статистика заполнения дневника. После реализации вернёт 200."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 or 404', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get client feedback",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/specialist/clients/{{clientId}}/feedback",
+              "host": ["{{baseUrl}}"],
+              "path": ["specialist", "clients", "{{clientId}}", "feedback"]
+            },
+            "description": "Feedback клиента read-only. После реализации вернёт 200."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 or 404', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05. Авторизация: негативные проверки",
+      "item": [
+        {
+          "name": "Missing auth header",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/clients",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "clients"]
+            },
+            "description": "Запрос без Authorization должен вернуть 401."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 401', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer invalid-token",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/clients",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "clients"]
+            },
+            "description": "Запрос с неверным токеном должен вернуть 401."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 401', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
