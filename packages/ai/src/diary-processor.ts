@@ -66,12 +66,14 @@ export async function processDiaryEntry(nutritionDiaryId: string): Promise<Proce
   }
 
   const history = await loadHistoryForEnrollment(entry.clientEnrollmentId);
+  const previousHistory = await loadPreviousEnrollmentHistory(client.id, entry.clientEnrollmentId);
   const questionnaire = await loadQuestionnaireForEnrollment(entry.clientEnrollmentId);
   const timezone = await resolveClientTimezone(client.id);
 
   const input: DiaryAnalysisInput = {
     entry,
     history,
+    previousHistory,
     questionnaire,
     clientContext: {
       firstName: client.firstName ?? null,
@@ -112,7 +114,10 @@ export async function processDiaryEntry(nutritionDiaryId: string): Promise<Proce
     // medium/low: Recommendation создана, но Message отправляется вечерним job (roadmap 5.8).
   }
 
-  skippedDueToLimit += Math.max(0, analysis.proposals.length - recommendationsCreated - skippedDueToLimit);
+  skippedDueToLimit += Math.max(
+    0,
+    analysis.proposals.length - recommendationsCreated - skippedDueToLimit,
+  );
 
   logger.info(
     {
@@ -135,7 +140,33 @@ async function loadHistoryForEnrollment(clientEnrollmentId: string): Promise<Nut
   });
 }
 
-async function loadQuestionnaireForEnrollment(clientEnrollmentId: string): Promise<Questionnaire | null> {
+async function loadPreviousEnrollmentHistory(
+  clientId: string,
+  currentEnrollmentId: string,
+): Promise<NutritionDiary[]> {
+  const previousEnrollment = await ClientEnrollment.findOne({
+    where: {
+      clientId,
+      id: { [Op.ne]: currentEnrollmentId },
+      status: 'completed',
+    },
+    order: [['endDate', 'DESC']],
+  });
+
+  if (!previousEnrollment) {
+    return [];
+  }
+
+  return NutritionDiary.findAll({
+    where: { clientEnrollmentId: previousEnrollment.id },
+    order: [['mealAt', 'DESC']],
+    limit: 50,
+  });
+}
+
+async function loadQuestionnaireForEnrollment(
+  clientEnrollmentId: string,
+): Promise<Questionnaire | null> {
   return Questionnaire.findOne({
     where: { clientEnrollmentId, status: 'completed' },
     order: [['completedAt', 'DESC']],
@@ -144,8 +175,12 @@ async function loadQuestionnaireForEnrollment(clientEnrollmentId: string): Promi
 
 async function countRecommendationsToday(clientId: string): Promise<number> {
   const now = new Date();
-  const startOfDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
-  const endOfDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+  const startOfDay = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0),
+  );
+  const endOfDay = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0),
+  );
 
   return Recommendation.count({
     where: {

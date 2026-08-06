@@ -6,6 +6,7 @@ import type { Logger } from 'pino';
 import { createStartHandler } from './commands/start.js';
 import type { BotContext } from './context.js';
 import { handleFeedbackCallback } from './handlers/feedback-handler.js';
+import { handleRenewalCallback } from './handlers/renewal-handler.js';
 import {
   handleOptOutCallback,
   handlePauseCommand,
@@ -30,6 +31,7 @@ export function createBot(token: string, logger: Logger): Bot<BotContext> {
   bot.callbackQuery(/^(stop|pause):/, handleOptOutCallback);
   bot.callbackQuery(/^feedback:/, handleFeedbackCallback);
   bot.callbackQuery(/^review:/, handleFeedbackCallback);
+  bot.callbackQuery(/^renewal:/, handleRenewalCallback);
   bot.on('message:text', onboardingMessageHandler);
   bot.on('message:photo', photoMessageHandler);
 

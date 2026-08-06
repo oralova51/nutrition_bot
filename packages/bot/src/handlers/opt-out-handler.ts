@@ -20,9 +20,7 @@ const NO_ACTIVE_COURSE_TEXT =
   'У вас пока нет активного курса. Обратитесь к администратору студии — он вышлет персональную ссылку-приглашение.';
 
 function buildMenuKeyboard(): InlineKeyboard {
-  return new InlineKeyboard().row(
-    InlineKeyboard.text('Отключить полностью', 'stop:confirm'),
-  );
+  return new InlineKeyboard().row(InlineKeyboard.text('Отключить полностью', 'stop:confirm'));
 }
 
 function buildConfirmKeyboard(): InlineKeyboard {

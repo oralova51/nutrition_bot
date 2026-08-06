@@ -10,6 +10,7 @@ import {
   serializeCreatedClient,
   type ClientListFilters,
 } from '../services/clients.js';
+import { createEnrollmentForClient, serializeEnrollment } from '../services/enrollments.js';
 import {
   optionalString,
   parseBooleanParam,
@@ -87,6 +88,23 @@ export function createClientRoutes(botUsername: string): RouteDefinition[] {
         const clientId = requireClientId(params);
         const detail = await getClientDetail(clientId);
         sendJson(res, 200, detail);
+      },
+    },
+    {
+      method: 'POST',
+      pattern: '/admin/clients/:clientId/enrollments',
+      requiresAdminAuth: true,
+      handler: async ({ req, res, params }: RouteContext): Promise<void> => {
+        const clientId = requireClientId(params);
+        const body = requireObjectBody(await readJsonBody(req));
+
+        const result = await createEnrollmentForClient({
+          clientId,
+          courseId: requireString(body, 'courseId'),
+          startDate: requireIsoDate(body, 'startDate'),
+        });
+
+        sendJson(res, 201, serializeEnrollment(result.enrollment));
       },
     },
   ];

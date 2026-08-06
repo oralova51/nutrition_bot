@@ -39,11 +39,13 @@ export class OpenAICompatibleAIEngine implements AIEngine {
 
   async analyzeDiary(input: DiaryAnalysisInput): Promise<DiaryAnalysisResult> {
     const historySummary = this.buildHistorySummary(input);
+    const previousHistorySummary = this.buildPreviousHistorySummary(input);
     const userPrompt = buildDiaryAnalysisUserPrompt(
       input.entry.description,
       input.entry.hasPhoto,
       input.entry.approxCalories,
       historySummary,
+      previousHistorySummary,
       input.clientContext,
     );
 
@@ -170,5 +172,12 @@ export class OpenAICompatibleAIEngine implements AIEngine {
       `Всего записей за курс: ${input.history.length}`,
       input.questionnaire ? 'Анкета клиента заполнена.' : 'Анкета не заполнена.',
     ].join('\n');
+  }
+
+  private buildPreviousHistorySummary(input: DiaryAnalysisInput): string | undefined {
+    if (!input.previousHistory || input.previousHistory.length === 0) {
+      return undefined;
+    }
+    return `Записей за предыдущий курс: ${input.previousHistory.length}. Последняя запись: ${input.previousHistory[0]?.description ?? '(без описания)'}.`;
   }
 }

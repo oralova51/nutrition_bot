@@ -15,6 +15,7 @@ import { NutritionDiary, initNutritionDiaryModel } from './nutrition-diary.js';
 import { Questionnaire, initQuestionnaireModel } from './questionnaire.js';
 import { Recommendation, initRecommendationModel } from './recommendation.js';
 import { Report, initReportModel } from './report.js';
+import { RenewalOffer, initRenewalOfferModel } from './renewal-offer.js';
 
 export { Client } from './client.js';
 export {
@@ -83,6 +84,7 @@ export {
   type ProblemArea,
   type ReportType,
 } from './report.js';
+export { RenewalOffer, RENEWAL_OFFER_STATUSES, type RenewalOfferStatus } from './renewal-offer.js';
 
 let modelsInitialized = false;
 
@@ -147,6 +149,12 @@ function initAssociations(): void {
   Client.hasMany(Report, { foreignKey: 'clientId', as: 'reports' });
   Report.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
 
+  ClientEnrollment.hasMany(RenewalOffer, { foreignKey: 'enrollmentId', as: 'renewalOffers' });
+  RenewalOffer.belongsTo(ClientEnrollment, { foreignKey: 'enrollmentId', as: 'enrollment' });
+
+  Client.hasMany(RenewalOffer, { foreignKey: 'clientId', as: 'renewalOffers' });
+  RenewalOffer.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
+
   Client.hasMany(Feedback, { foreignKey: 'clientId', as: 'feedbacks' });
   Feedback.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
 
@@ -167,6 +175,7 @@ export function initModels(sequelize: Sequelize): void {
   initQuestionnaireModel(sequelize);
   initRecommendationModel(sequelize);
   initReportModel(sequelize);
+  initRenewalOfferModel(sequelize);
   initFeedbackModel(sequelize);
   initAssociations();
   modelsInitialized = true;

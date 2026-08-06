@@ -44,6 +44,7 @@ export function buildDiaryAnalysisUserPrompt(
   hasPhoto: boolean,
   approxCalories: number | null,
   historySummary: string,
+  previousHistorySummary: string | undefined,
   context: ClientContext,
 ): string {
   const parts: string[] = [
@@ -57,6 +58,10 @@ export function buildDiaryAnalysisUserPrompt(
   }
 
   parts.push(`Контекст за текущий курс:\n${historySummary}`);
+
+  if (previousHistorySummary) {
+    parts.push(`Контекст за предыдущий курс (продление):\n${previousHistorySummary}`);
+  }
 
   return parts.join('\n');
 }

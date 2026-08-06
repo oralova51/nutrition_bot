@@ -29,6 +29,8 @@ export interface DiaryAnalysisInput {
   entry: NutritionDiary;
   /** История записей за текущий enrollment (включая текущую). */
   history: NutritionDiary[];
+  /** История записей за предыдущий завершённый enrollment (roadmap 8.5). */
+  previousHistory?: NutritionDiary[];
   /** Анкета клиента, если заполнена. */
   questionnaire?: Questionnaire | null;
   /** Контекст клиента для персонализации текста. */

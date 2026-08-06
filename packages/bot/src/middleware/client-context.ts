@@ -84,7 +84,10 @@ export function createClientContextMiddleware(
       try {
         await ctx.api.sendMessage(telegramId, WELCOME_BACK_MESSAGE, { parse_mode: 'HTML' });
       } catch (err) {
-        logger.error({ clientId: client.id, err }, 'Не удалось отправить приветствие после возвращения');
+        logger.error(
+          { clientId: client.id, err },
+          'Не удалось отправить приветствие после возвращения',
+        );
       }
     }
 

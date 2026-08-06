@@ -8,12 +8,7 @@
 
 import { subHours } from 'date-fns';
 import { Op } from 'sequelize';
-import {
-  Client,
-  ClientEnrollment,
-  Message,
-  NotificationSettings,
-} from '@nutrition-bot/shared';
+import { Client, ClientEnrollment, Message, NotificationSettings } from '@nutrition-bot/shared';
 import type { Logger } from 'pino';
 
 interface ClientWithAssociations extends Client {

@@ -19,6 +19,7 @@ export const MESSAGE_TYPES = [
   'report',
   'feedback_request',
   'feedback',
+  'renewal_offer',
   'info',
 ] as const;
 

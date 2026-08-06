@@ -3,6 +3,7 @@
 
 export const PACKAGE_NAME = '@nutrition-bot/shared';
 
+export * from './config/renewal.js';
 export * from './db/index.js';
 export * from './logging/index.js';
 export * from './models/index.js';

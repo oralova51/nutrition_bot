@@ -16,6 +16,7 @@ import {
   type ReportType,
 } from '@nutrition-bot/shared';
 import type { Logger } from 'pino';
+import { sendRenewalOffer } from './course-renewal.js';
 
 interface EnrollmentWithClient extends ClientEnrollment {
   client?: Client;
@@ -410,10 +411,11 @@ export async function completeCourse(enrollment: ClientEnrollment, logger: Logge
   const report = await buildFinalReport(enrollment);
   await sendReportToTelegram(enrollmentWithClient, report);
   await requestFeedback(enrollmentWithClient);
+  await sendRenewalOffer(enrollment, logger);
 
   logger.info(
     { enrollmentId: enrollment.id, clientId: enrollment.clientId, reportId: report.id },
-    'Курс завершён, отчёт и запрос feedback отправлены',
+    'Курс завершён, отчёт, запрос feedback и предложение продления отправлены',
   );
 }
 

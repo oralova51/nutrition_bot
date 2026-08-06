@@ -68,7 +68,11 @@ export async function runRecommendationDeliveryJob(logger: Logger): Promise<void
       });
       await result.message.update({ recommendationId: recommendation.id });
       logger.info(
-        { clientId: client.id, recommendationId: recommendation.id, priority: recommendation.priority },
+        {
+          clientId: client.id,
+          recommendationId: recommendation.id,
+          priority: recommendation.priority,
+        },
         'Отложенная рекомендация отправлена',
       );
     } catch (err) {

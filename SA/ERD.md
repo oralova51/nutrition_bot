@@ -45,6 +45,7 @@ erDiagram
     CLIENT_ENROLLMENT ||--o{ REPORT : "1 → M (шаг 0.4)"
     CLIENT_ENROLLMENT ||--o{ PROGRESS : "1 → M"
     CLIENT_ENROLLMENT ||--o{ QUESTIONNAIRE : "1 → M"
+    CLIENT_ENROLLMENT ||--o{ RENEWAL_OFFER : "1 → M (roadmap 8)"
 
     CLIENT ||--o{ NUTRITION_DIARY : "1 → M (denorm)"
     CLIENT ||--o{ REPORT : "1 → M (denorm)"
@@ -54,6 +55,7 @@ erDiagram
     CLIENT ||--o{ MESSAGE : "1 → M"
     CLIENT ||--o{ REMINDER : "1 → M"
     CLIENT ||--o{ FEEDBACK : "1 → M"
+    CLIENT ||--o{ RENEWAL_OFFER : "1 → M (denorm, roadmap 8)"
 
     NUTRITION_DIARY ||--o{ RECOMMENDATION : "1 → M (анализ записи)"
     QUESTIONNAIRE ||--o{ RECOMMENDATION : "1 → M (анализ анкеты)"
@@ -217,6 +219,20 @@ erDiagram
         timestamp createdAt
     }
 
+    RENEWAL_OFFER {
+        uuid id PK
+        uuid clientId FK "denorm"
+        uuid enrollmentId FK "owning, NOT NULL — roadmap 8"
+        string status "sent|clicked|converted|dismissed"
+        text checkoutUrl
+        int basePrice "копейки"
+        int discountPercent "0..100"
+        int finalPrice "копейки"
+        timestamp offeredAt
+        timestamp clickedAt "nullable"
+        timestamp updatedAt
+    }
+
     REPORT {
         uuid id PK
         uuid clientEnrollmentId FK "owning, NOT NULL — шаг 0.4"
@@ -276,6 +292,8 @@ erDiagram
 | ClientEnrollment | 1 → M | Questionnaire | анкета проходится в рамках подключения к курсу (ФТ-2) |
 | Client | 1 → 1 | NotificationSettings | инициализируется при создании клиента (правило 3) |
 | Client | 1 → M | Habit / Recommendation / Message / Reminder / Feedback | сквозные для клиента сущности |
+| ClientEnrollment | 1 → M | RenewalOffer | предложение продления за конкретный enrollment (roadmap 8, ФТ-18) |
+| Client | 1 → M | RenewalOffer | денормализованная копия для выборок администратора (roadmap 8) |
 | NutritionDiary | 1 → M | Recommendation | рекомендация на основе анализа записи (правило 1) |
 | Questionnaire | 1 → M | Recommendation | рекомендация на основе анализа анкеты (правило 1) |
 | Recommendation | 1 → M | Feedback | оценка полезности рекомендации (ФТ-15/16) |
