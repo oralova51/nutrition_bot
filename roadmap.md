@@ -405,23 +405,23 @@ Inline-кнопки оценки 1–5 звёзд
 > Реализовано: `enrollment.update({ status: 'completed' })` в `completeCourse`.
 Этап 8. Продление курса (Фаза 6 SA)
 #	Шаг	Связь с ФТ    
-8.1
+8.1 [x]
 Сообщение о продлении со скидкой 15% (после feedback)
 ФТ-18
 > Реализовано: в `packages/scheduler/src/services/course-renewal.ts` формируется сообщение с преимуществами, ценой и скидкой 15%. Отправляется из `completeCourse` после запроса feedback.
-8.2
+8.2 [x]
 CTA-кнопка «Продлить курс» + ссылка на систему студии
 ФТ-18
 > Реализовано: inline-кнопка с callback `renewal:accept:{offerId}` и последующая ссылка на `RENEWAL_CHECKOUT_URL`. Обработчик — `packages/bot/src/handlers/renewal-handler.ts`.
-8.3
+8.3 [x]
 Лог отправки предложения
 ФТ-18
 > Реализовано: запись в `RenewalOffer` (status='sent') и запись `Message` с type='renewal_offer', category='transactional'.
-8.4
+8.4 [x]
 API: создание нового ClientEnrollment при продлении
 ФТ-18, Domain
 > Реализовано: `POST /admin/clients/:clientId/enrollments` в `packages/api/src/routes/clients.ts` + `services/enrollments.ts`. Проверяет отсутствие активного enrollment (422 ACTIVE_ENROLLMENT_EXISTS).
-8.5
+8.5 [x]
 Использование истории прошлого enrollment в AI-анализе
 ФТ-23
 > Реализовано: `packages/ai/src/diary-processor.ts` подгружает последние 50 записей дневника из предыдущего завершённого enrollment и передаёт их в `DiaryAnalysisInput.previousHistory`. Prompt в `openai-compatible-engine.ts` включает сводку по предыдущему курсу.
