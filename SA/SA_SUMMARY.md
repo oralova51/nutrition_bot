@@ -129,7 +129,17 @@ Telegram-бот «Виртуальный консультант по питан�
 
 ---
 
-## 10. Открытые вопросы / допущения
+## 10. Ошибки и edge cases (stage10-errors.md)
+
+- **ФТ-21:** Централизованный retry отправки в Telegram (3×5 мин) в `packages/shared/src/telegram/sender.ts`; статус `delivery_failed` на `Message`; уведомление администратора при исчерпании retry.
+- **ФТ-22:** Валидация некорректного ввода дневника: до 3 попыток уточнения, затем запись `NutritionDiary` остаётся в статусе `needs_clarification`. Admin-просмотр через `GET /admin/enrollments/:id/diary?status=needs_clarification`.
+- **nonFR §6:** Алерт администратору при массовых сбоях доставки: job считает `delivery_failed` за окно и отправляет алерт в Telegram, если превышен порог.
+- **Изоляция ошибок:** scheduler job-ы и grammY-бот не падают из-за одного сбоя; асинхронный AI-анализ не блокирует ответ пользователю.
+- **Конфигурация:** `ADMIN_ALERT_TELEGRAM_ID`, `MASS_FAILURE_WINDOW_MINUTES`, `MASS_FAILURE_THRESHOLD`, `MASS_FAILURE_ALERT_INTERVAL_MINUTES`.
+
+---
+
+## 11. Открытые вопросы / допущения
 
 - **Часовой пояс:** MVP — `language_code` + default `Europe/Moscow`, ручной выбор в `/settings`.
 - **NotificationSettings** привязаны к Client (1:1); при параллельных enrollment потребуется пересмотр.

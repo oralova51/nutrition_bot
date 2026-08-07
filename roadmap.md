@@ -5,7 +5,7 @@
 > Пометка `✓` внутри шагов = готова спецификация в `SA/`, **не** реализация кода.
 > Правило: при старте шага ставь `[~]`, при завершении — `[x]`, и синхронизируй статус здесь.
 
-**Текущий фокус:** Этап 10 — ошибки и edge cases.
+**Текущий фокус:** Этап 11 — Non-functional (параллельно, но до пилота).
 
 - [x] Этап 0 — Подготовка (спецификации SA: ERD, Domain, adminAPI готовы; шаг 0.5 ✓)
 - [x] Этап 1 — Каркас проекта (TS/ESLint/Prettier, БД, модели Client/Course/Enrollment/Notification/Message, логирование, health-check)
@@ -17,7 +17,7 @@
 - [x] Этап 7 — Завершение курса (Report, Feedback, ветки оценок)
 - [x] Этап 8 — Продление курса (ФТ-18)
 - [x] Этап 9 — Панели управления (9.4–9.9 и 9.12–9.16 реализованы по SA/stage9-dashboards.md; 9.2, 9.3, 9.10 уже были готовы; UI — post-MVP)
-- [ ] Этап 10 — Ошибки и edge cases (ФТ-21, ФТ-22)
+- [x] Этап 10 — Ошибки и edge cases (ФТ-21, ФТ-22) — код и документация реализованы, см. SA/stage10-errors.md
 - [ ] Этап 11 — Non-functional (шифрование, хранение, мониторинг, AIModelLog)
 - [ ] Этап 12 — Пилот (seed, чек-листы CJM, метрики, go/no-go)
 
@@ -480,30 +480,38 @@ Auth + привязка специалиста к клиентам
 > Реализовано: `GET /specialist/clients/:id/feedback` — read-only список feedback клиента.
 Этап 10. Ошибки и edge cases (Фаза 8 SA)
 #	Шаг	Связь с ФТ
-10.1
+10.1 [x]
 Централизованный retry для Telegram (3×5 мин)
 ФТ-21
-10.2
+> Реализовано в `packages/shared/src/telegram/sender.ts`: `sendTelegramMessageWithRetry` обновляет одну запись `Message` и повторяет до 3 раз с паузой 5 мин. `sendTelegramMessage` — real-time отправка без блокирующего retry.
+10.2 [x]
 Статус delivery_failed на Message
 ФТ-21
-10.3
+> Поле `deliveryStatus` в модели `Message` и миграции `20260709170000-create-messages-table.ts`; при исчерпании retry выставляется `delivery_failed`.
+10.3 [x]
 Уведомление admin при delivery_failed
 ФТ-21
-10.4
+> Реализовано: если задан `ADMIN_ALERT_TELEGRAM_ID`, при исчерпании retry администратору отправляется Telegram-алерт с `clientId`, `messageId`, типом и ошибкой. Сервис `packages/shared/src/telegram/alerts.ts`.
+10.4 [x]
 Не падать при ошибке одного клиента
 ФТ-21
-10.5
+> Scheduler job-ы обёрнуты в `try/catch` и обрабатывают клиентов по одному; grammY-бот имеет `bot.catch` для необработанных ошибок; асинхронный AI-анализ не ломает ответ пользователю.
+10.5 [x]
 Валидация ввода: «не понял, переформулируй»
 ФТ-22
-10.6
+> Реализовано в `packages/bot/src/services/nutrition-diary.ts`: при неполном/нераспознанном описании бот просит переформулировать.
+10.6 [x]
 Макс. 3 попытки → статус needs_clarification
 ФТ-22
-10.7
+> Реализовано в том же сервисе: счётчик `clarificationAttempts`, после 3 попыток запись остаётся в `needs_clarification`.
+10.7 [x]
 Admin-просмотр записей needs_clarification
 ФТ-22
-10.8
+> Используется существующий endpoint `GET /admin/enrollments/:id/diary?status=needs_clarification` (roadmap 9.4). Ручная обработка (PATCH) — post-MVP.
+10.8 [x]
 Alert admin при массовых сбоях доставки
 nonFR §6
+> Реализован job `packages/scheduler/src/jobs/delivery-failure-alert-job.ts`: считает `delivery_failed` за окно `MASS_FAILURE_WINDOW_MINUTES` и алертит администратору при превышении `MASS_FAILURE_THRESHOLD`, не чаще `MASS_FAILURE_ALERT_INTERVAL_MINUTES`.
 Этап 11. Non-functional (параллельно, но до пилота)
 #	Шаг
 11.1

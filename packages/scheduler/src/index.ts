@@ -13,6 +13,7 @@ import { resolveBotToken } from './config.js';
 import { runDailyReminderJob } from './jobs/daily-reminder.js';
 import { runEveningReminderJob } from './jobs/evening-reminder-job.js';
 import { runCourseCompletionJob } from './jobs/course-completion-job.js';
+import { runDeliveryFailureAlertJob } from './jobs/delivery-failure-alert-job.js';
 import { runInactivityDeactivationJob } from './jobs/inactivity-deactivation-job.js';
 import { runInactivityWarningJob } from './jobs/inactivity-warning-job.js';
 import { runPendingDiaryJob } from './jobs/pending-diary-job.js';
@@ -89,6 +90,13 @@ async function main(): Promise<void> {
   schedule('1 0 * * *', () => {
     void runCourseCompletionJob(logger).catch((err: unknown) => {
       logger.error({ err }, 'Завершение курса: необработанная ошибка job');
+    });
+  });
+
+  // Массовые сбои доставки (roadmap 10.8, nonFR §6): алерт администратору при превышении порога.
+  schedule('*/10 * * * *', () => {
+    void runDeliveryFailureAlertJob(logger).catch((err: unknown) => {
+      logger.error({ err }, 'Алерт массовых сбоев: необработанная ошибка job');
     });
   });
 

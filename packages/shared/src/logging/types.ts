@@ -5,6 +5,7 @@ export const SERVICE_NAMES = [
   'bot',
   'scheduler',
   'telegram-sender',
+  'telegram-alerts',
   'nutrition-diary',
   'ai-engine',
 ] as const;

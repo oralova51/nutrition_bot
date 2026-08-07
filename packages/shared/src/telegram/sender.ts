@@ -2,10 +2,12 @@
 // Используется и ботом, и scheduler. Пишет факт доставки в Message.
 // Retry-политика: +5 мин, максимум 3 попытки (ФТ-4 / ФТ-5, roadmap 4.7).
 
-import { Bot } from 'grammy';
 import { logMessageDeliveryFailure } from '../logging/events.js';
 import { createLogger } from '../logging/logger.js';
+import { LOG_EVENTS } from '../logging/types.js';
 import { Message, type MessageCategory, type MessageType } from '../models/message.js';
+import { sendAdminAlert } from './alerts.js';
+import { getBot } from './bot.js';
 
 const logger = createLogger('telegram-sender');
 
@@ -34,20 +36,7 @@ export interface TelegramSendResult {
   message: Message;
 }
 
-let botInstance: Bot | undefined;
-
-function getBot(): Bot {
-  if (!botInstance) {
-    const token = process.env.TELEGRAM_API;
-    if (!token) {
-      throw new Error('TELEGRAM_API не задан. Укажите переменную окружения (см. .env.example).');
-    }
-    botInstance = new Bot(token);
-  }
-  return botInstance;
-}
-
-/** Создаёт запись Message в БД до отправки, затем обновляет статус. */
+/** Создаёт запись Message в БД до отправки. */
 async function createPendingMessage(
   payload: TelegramMessagePayload,
   retryCount: number,
@@ -63,6 +52,43 @@ async function createPendingMessage(
   });
 }
 
+/** Логирует сбой доставки и отправляет алерт администратору (best-effort). */
+function alertAdminOnDeliveryFailure(
+  message: Message,
+  payload: TelegramMessagePayload,
+  retryCount: number,
+  err: unknown,
+): void {
+  logMessageDeliveryFailure(logger, {
+    clientId: payload.clientId,
+    messageId: message.id,
+    channel: 'telegram',
+    retryCount,
+    err,
+  });
+
+  void sendAdminAlert(
+    `❌ Сообщение не доставлено\n\n` +
+      `Client: ${payload.clientId}\n` +
+      `Message: ${message.id}\n` +
+      `Type: ${payload.type}\n` +
+      `Retry: ${retryCount}/${MAX_RETRIES}\n` +
+      `Ошибка: ${formatError(err)}`,
+  ).catch((alertErr: unknown) => {
+    logger.warn(
+      { alertErr, event: LOG_EVENTS.MESSAGE_DELIVERY_FAILED },
+      'Не удалось отправить алерт администратору о сбое доставки',
+    );
+  });
+}
+
+function formatError(err: unknown): string {
+  if (err instanceof Error) {
+    return `${err.name}: ${err.message}`;
+  }
+  return String(err);
+}
+
 /** Базовая отправка без retry. Используется в боте для ответов в реальном времени. */
 export async function sendTelegramMessage(
   payload: TelegramMessagePayload,
@@ -76,14 +102,8 @@ export async function sendTelegramMessage(
     });
     return { telegramMessageId: telegramMessage.message_id, message };
   } catch (err) {
-    await message.update({ deliveryStatus: 'delivery_failed' });
-    logMessageDeliveryFailure(logger, {
-      clientId: payload.clientId,
-      messageId: message.id,
-      channel: 'telegram',
-      retryCount: 0,
-      err,
-    });
+    await message.update({ deliveryStatus: 'delivery_failed', retryCount: 0 });
+    alertAdminOnDeliveryFailure(message, payload, 0, err);
     throw err;
   }
 }
@@ -91,10 +111,16 @@ export async function sendTelegramMessage(
 /** Отправка с retry: +5 мин, максимум 3 попытки. Используется в scheduler. */
 export async function sendTelegramMessageWithRetry(
   payload: TelegramMessagePayload,
-  retryCount = 0,
 ): Promise<TelegramSendResult> {
-  const message = await createPendingMessage(payload, retryCount);
+  const message = await createPendingMessage(payload, 0);
+  return sendWithRetry(payload, message, 0);
+}
 
+async function sendWithRetry(
+  payload: TelegramMessagePayload,
+  message: Message,
+  retryCount: number,
+): Promise<TelegramSendResult> {
   try {
     const telegramMessage = await getBot().api.sendMessage(payload.telegramId, payload.text, {
       parse_mode: payload.parseMode ?? 'HTML',
@@ -103,7 +129,7 @@ export async function sendTelegramMessageWithRetry(
     return { telegramMessageId: telegramMessage.message_id, message };
   } catch (err) {
     const nextRetryCount = retryCount + 1;
-    await message.update({ deliveryStatus: 'delivery_failed', retryCount: nextRetryCount });
+    await message.update({ retryCount: nextRetryCount });
     logMessageDeliveryFailure(logger, {
       clientId: payload.clientId,
       messageId: message.id,
@@ -113,6 +139,8 @@ export async function sendTelegramMessageWithRetry(
     });
 
     if (nextRetryCount >= MAX_RETRIES) {
+      await message.update({ deliveryStatus: 'delivery_failed' });
+      alertAdminOnDeliveryFailure(message, payload, nextRetryCount, err);
       throw err;
     }
 
@@ -122,7 +150,7 @@ export async function sendTelegramMessageWithRetry(
     );
 
     await sleep(RETRY_DELAY_MS);
-    return sendTelegramMessageWithRetry(payload, nextRetryCount);
+    return sendWithRetry(payload, message, nextRetryCount);
   }
 }
 
