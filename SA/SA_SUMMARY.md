@@ -49,9 +49,9 @@ Telegram-бот «Виртуальный консультант по питан�
 - **Recommendation:** `id, clientId, nutritionDiaryId?, questionnaireId?(ровно один из двух), type(product|habit|regimen|calories), priority(critical|high|medium|low), content?(текст рекомендации), status(sent|read|applied|dismissed), createdAt`
 - **Message:** `id, clientId, recommendationId?, type(recommendation|reminder|questionnaire_reminder|evening_reminder|report|info), category(transactional|optional), content, channel(telegram|whatsapp|max), deliveryStatus(sent|delivered|read|delivery_failed), retryCount(0..3), createdAt`
 - **Reminder:** `id, clientId, type(fill_diary|check_recommendation), schedule, status(active|inactive|done)`
-- **Feedback:** `id, clientId, recommendationId, rating(1..5), comment?(обязателен при 1-3), isApplied?, createdAt`
+- **Feedback:** `id, clientId, recommendationId, rating(1..5), comment?(обязателен при 1-3), isApplied?, isResolved(default false), createdAt`
 - **Report:** `id, clientEnrollmentId(NOT NULL), clientId(denorm), periodStart, periodEnd, type(weekly|monthly|final), diaryStats(json), adherencePercent, problemAreas(json), dynamics(json), createdAt`
-- **RenewalOffer:** `id, clientId, enrollmentId(NOT NULL), status(sent|clicked|converted|dismissed), checkoutUrl, basePrice(int копейки), discountPercent(0–100), finalPrice(int копейки), offeredAt, clickedAt?, updatedAt` — предложение продления курса (roadmap 8)
+- **RenewalOffer:** `id, clientId, enrollmentId(NOT NULL), status(sent|clicked|converted|dismissed), checkoutUrl, basePrice(int копейки), discountPercent(0–100), finalPrice(int копейки), offeredAt, clickedAt?` — предложение продления курса (roadmap 8)
 - **Progress:** `id, clientEnrollmentId(NOT NULL), clientId(denorm), goalId, measuredAt, metrics(json), achievementPercent, comment?`
 - **AIModelLog** (без связей): `id, version, updatedAt, updateReason, analystComment`
 
@@ -122,7 +122,14 @@ Telegram-бот «Виртуальный консультант по питан�
 
 ---
 
-## 9. Открытые вопросы / допущения
+## 9. Панели управления (stage9-dashboards.md)
+
+- **Админ (ФТ-19):** `GET /admin/enrollments/:id/diary` (анонимно); `GET /admin/statistics/recommendations` (соблюдение по статусам и приоритетам); `GET /admin/feedback/critical` (рейтинг ≤ 3, фильтр `unresolvedOnly`, поле `isResolved`); `GET /admin/renewal-offers` (сводка по статусам и конверсия); `GET /admin/export/clients?format=csv` (CSV c BOM, UTF-8); `GET /admin/messages/failed` (недоставленные, фильтр `exhaustedRetries`).
+- **Специалист (ФТ-20):** `GET /specialist/clients/:id/reports` (итоговые отчёты); `GET /specialist/clients/:id/compliance` (процент применённых рекомендаций за текущий enrollment); `GET /specialist/statistics/problems` (топ проблем из `Report.problemAreas`); `GET /specialist/statistics/activity` (заполнение дневника, фильтр `minFillRate`); `GET /specialist/clients/:id/feedback` (read-only). MVP: тот же Bearer-токен, post-MVP — JWT/RBAC.
+
+---
+
+## 10. Открытые вопросы / допущения
 
 - **Часовой пояс:** MVP — `language_code` + default `Europe/Moscow`, ручной выбор в `/settings`.
 - **NotificationSettings** привязаны к Client (1:1); при параллельных enrollment потребуется пересмотр.

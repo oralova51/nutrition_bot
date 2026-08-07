@@ -61,11 +61,6 @@ export const up: Migration = async ({ context: queryInterface }) => {
       type: DataTypes.DATE,
       allowNull: true,
     },
-    updated_at: {
-      type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: queryInterface.sequelize.literal('now()'),
-    },
   });
 
   await queryInterface.sequelize.query(`

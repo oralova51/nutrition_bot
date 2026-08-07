@@ -82,12 +82,13 @@ export interface PaginationParams {
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
-const MAX_LIMIT = 100;
+export const MAX_LIMIT = 100;
 
-function parsePositiveIntParam(
+export function parsePositiveIntParam(
   query: URLSearchParams,
   field: string,
   defaultValue: number,
+  maxValue?: number,
 ): number {
   const raw = query.get(field);
   if (raw === null || raw === '') {
@@ -101,13 +102,16 @@ function parsePositiveIntParam(
       `Параметр "${field}" должен быть положительным целым числом`,
     );
   }
+  if (maxValue !== undefined && value > maxValue) {
+    return maxValue;
+  }
   return value;
 }
 
 /** adminAPI.md §4.3: page (default 1), limit (default 20, max 100). */
 export function parsePagination(query: URLSearchParams): PaginationParams {
   const page = parsePositiveIntParam(query, 'page', DEFAULT_PAGE);
-  const limit = Math.min(parsePositiveIntParam(query, 'limit', DEFAULT_LIMIT), MAX_LIMIT);
+  const limit = parsePositiveIntParam(query, 'limit', DEFAULT_LIMIT, MAX_LIMIT);
   return { page, limit };
 }
 
@@ -142,6 +146,37 @@ export function parseBooleanParam(query: URLSearchParams, field: string): boolea
     return false;
   }
   throw new ApiError(400, 'INVALID_PARAMS', `Параметр "${field}" должен быть true или false`);
+}
+
+export interface DateRangeParams {
+  from?: string;
+  to?: string;
+}
+
+/** Парсит пару дат `from`/`to` в формате `YYYY-MM-DD`. Оба параметра опциональны, но если указаны — проверяется порядок. */
+export function parseDateRange(query: URLSearchParams): DateRangeParams {
+  const rawFrom = query.get('from');
+  const rawTo = query.get('to');
+
+  if (rawFrom !== null && !isValidIsoDate(rawFrom)) {
+    throw new ApiError(
+      400,
+      'INVALID_PARAMS',
+      'Параметр "from" должен быть датой в формате YYYY-MM-DD',
+    );
+  }
+  if (rawTo !== null && !isValidIsoDate(rawTo)) {
+    throw new ApiError(
+      400,
+      'INVALID_PARAMS',
+      'Параметр "to" должен быть датой в формате YYYY-MM-DD',
+    );
+  }
+  if (rawFrom !== null && rawTo !== null && rawFrom > rawTo) {
+    throw new ApiError(400, 'INVALID_PARAMS', 'Параметр "from" не может быть позже "to"');
+  }
+
+  return { from: rawFrom ?? undefined, to: rawTo ?? undefined };
 }
 
 /** BIGINT в PostgreSQL хранится строкой (см. модели) — на границе API отдаём числом, как в adminAPI.md примерах. */

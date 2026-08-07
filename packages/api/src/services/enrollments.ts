@@ -10,13 +10,9 @@ import {
 } from '@nutrition-bot/shared';
 import { Op } from 'sequelize';
 import { ApiError } from '../http.js';
+import { displayName } from '../utils.js';
 import { addDaysToIsoDate } from '../validation.js';
 import type { PaginationParams } from '../validation.js';
-
-function displayName(firstName: string, lastName: string): string {
-  const initial = lastName.trim().charAt(0);
-  return initial ? `${firstName} ${initial}.` : firstName;
-}
 
 interface EnrollmentWithRelations extends ClientEnrollment {
   client?: Client;

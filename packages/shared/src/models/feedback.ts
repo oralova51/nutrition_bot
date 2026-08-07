@@ -18,6 +18,7 @@ export class Feedback extends Model<InferAttributes<Feedback>, InferCreationAttr
   declare rating: number;
   declare comment: string | null;
   declare isApplied: boolean | null;
+  declare isResolved: CreationOptional<boolean>;
   declare source: CreationOptional<'course_final' | 'recommendation'>;
   declare createdAt: CreationOptional<Date>;
 }
@@ -53,6 +54,11 @@ export function initFeedbackModel(sequelize: Sequelize): typeof Feedback {
       isApplied: {
         type: DataTypes.BOOLEAN,
         allowNull: true,
+      },
+      isResolved: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
       },
       source: {
         type: DataTypes.STRING(20),

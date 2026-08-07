@@ -800,12 +800,12 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/admin/messages/failed?retryCount=true",
+              "raw": "{{baseUrl}}/admin/messages/failed?exhaustedRetries=true",
               "host": ["{{baseUrl}}"],
               "path": ["admin", "messages", "failed"],
               "query": [
                 {
-                  "key": "retryCount",
+                  "key": "exhaustedRetries",
                   "value": "true"
                 }
               ]

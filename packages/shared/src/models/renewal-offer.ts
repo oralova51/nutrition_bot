@@ -30,7 +30,6 @@ export class RenewalOffer extends Model<
   declare finalPrice: number;
   declare offeredAt: CreationOptional<Date>;
   declare clickedAt: Date | null;
-  declare updatedAt: CreationOptional<Date>;
 }
 
 export function initRenewalOfferModel(sequelize: Sequelize): typeof RenewalOffer {
@@ -79,18 +78,13 @@ export function initRenewalOfferModel(sequelize: Sequelize): typeof RenewalOffer
         type: DataTypes.DATE,
         allowNull: true,
       },
-      updatedAt: {
-        type: DataTypes.DATE,
-        allowNull: false,
-        defaultValue: DataTypes.NOW,
-      },
     },
     {
       sequelize,
       tableName: 'renewal_offers',
       underscored: true,
       timestamps: true,
-      updatedAt: true,
+      updatedAt: false,
       createdAt: 'offeredAt',
     },
   );

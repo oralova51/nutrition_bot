@@ -34,6 +34,31 @@ export function sendApiError(res: ServerResponse, error: ApiError): void {
   });
 }
 
+function buildContentDisposition(filename: string): string {
+  // Экранируем " и \ для совместимости, убираем переносы строк в ASCII-имени.
+  // Для non-ASCII и спецсимволов используем RFC 5987 filename*.
+  const escaped = filename
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\r/g, '_')
+    .replace(/\n/g, '_');
+  const encoded = encodeURIComponent(filename);
+  return `attachment; filename="${escaped}"; filename*=UTF-8''${encoded}`;
+}
+
+export function sendCsv(
+  res: ServerResponse,
+  statusCode: number,
+  filename: string,
+  content: string,
+): void {
+  res.writeHead(statusCode, {
+    'Content-Type': 'text/csv; charset=utf-8',
+    'Content-Disposition': buildContentDisposition(filename),
+  });
+  res.end(content);
+}
+
 /** Читает тело запроса и парсит его как JSON. Пустое тело → `{}`. */
 export function readJsonBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {

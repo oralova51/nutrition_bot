@@ -13,18 +13,13 @@ import {
 } from '@nutrition-bot/shared';
 import { Op } from 'sequelize';
 import { ApiError } from '../http.js';
+import { displayName, pickCurrentEnrollment } from '../utils.js';
 import { addDaysToIsoDate, toNullableNumber, type PaginationParams } from '../validation.js';
 
 const CODE_PREFIX = 'enr_';
 
 function buildDeepLinkUrl(botUsername: string, code: string): string {
   return `https://t.me/${botUsername}?start=${CODE_PREFIX}${code}`;
-}
-
-/** adminAPI.md §4.3: в списке — инициалы, полное ФИ только в деталях клиента. */
-function displayName(firstName: string, lastName: string): string {
-  const initial = lastName.trim().charAt(0);
-  return initial ? `${firstName} ${initial}.` : firstName;
 }
 
 export interface CreateClientInput {
@@ -131,21 +126,6 @@ interface ClientWithRelations extends Client {
   notificationSettings?: NotificationSettings;
 }
 
-/** MVP: продление курса (roadmap этап 8) ещё не реализовано — берём активный enrollment,
- * либо (если активного нет) enrollment с наибольшей startDate как «текущий». */
-function pickCurrentEnrollment(
-  enrollments: Array<ClientEnrollment & { course?: Course }>,
-): (ClientEnrollment & { course?: Course }) | null {
-  if (enrollments.length === 0) {
-    return null;
-  }
-  const active = enrollments.find((e) => e.status === 'active');
-  if (active) {
-    return active;
-  }
-  return [...enrollments].sort((a, b) => (a.startDate < b.startDate ? 1 : -1))[0] ?? null;
-}
-
 /** adminAPI.md §4.3: active = enrollment active + notifications enabled + есть telegramId. */
 function computeDerivedStatus(params: {
   hasTelegram: boolean;
@@ -214,7 +194,7 @@ export interface ListClientsResult {
  */
 export async function listClients(
   filters: ClientListFilters,
-  pagination: PaginationParams,
+  pagination: PaginationParams | null,
   botUsername: string,
 ): Promise<ListClientsResult> {
   const where: Record<string, unknown> = {};
@@ -239,16 +219,24 @@ export async function listClients(
 
   sortComputed(computed, filters.sort ?? 'registeredAt', filters.order ?? 'desc');
 
-  const total = computed.length;
-  const totalPages = total === 0 ? 0 : Math.ceil(total / pagination.limit);
-  const start = (pagination.page - 1) * pagination.limit;
-  // Служебные `derivedStatus`/`linkStatus` использовались только для фильтрации/сортировки —
-  // в ответе клиенту (adminAPI.md §4.3) их не должно быть.
-  const data = computed.slice(start, start + pagination.limit).map((item) => item.view);
+  if (pagination) {
+    const total = computed.length;
+    const totalPages = total === 0 ? 0 : Math.ceil(total / pagination.limit);
+    const start = (pagination.page - 1) * pagination.limit;
+    // Служебные `derivedStatus`/`linkStatus` использовались только для фильтрации/сортировки —
+    // в ответе клиенту (adminAPI.md §4.3) их не должно быть.
+    const data = computed.slice(start, start + pagination.limit).map((item) => item.view);
 
+    return {
+      data,
+      pagination: { page: pagination.page, limit: pagination.limit, total, totalPages },
+    };
+  }
+
+  const data = computed.map((item) => item.view);
   return {
     data,
-    pagination: { page: pagination.page, limit: pagination.limit, total, totalPages },
+    pagination: { page: 1, limit: data.length, total: data.length, totalPages: 1 },
   };
 }
 

@@ -5,7 +5,7 @@
 > Пометка `✓` внутри шагов = готова спецификация в `SA/`, **не** реализация кода.
 > Правило: при старте шага ставь `[~]`, при завершении — `[x]`, и синхронизируй статус здесь.
 
-**Текущий фокус:** Этап 9 — подготовлена документация и Postman-коллекция для ручной проверки, код dashboard-ендпоинтов не начат.
+**Текущий фокус:** Этап 10 — ошибки и edge cases.
 
 - [x] Этап 0 — Подготовка (спецификации SA: ERD, Domain, adminAPI готовы; шаг 0.5 ✓)
 - [x] Этап 1 — Каркас проекта (TS/ESLint/Prettier, БД, модели Client/Course/Enrollment/Notification/Message, логирование, health-check)
@@ -16,7 +16,7 @@
 - [x] Этап 6 — Неактивность и opt-out (ФТ-9..ФТ-12)
 - [x] Этап 7 — Завершение курса (Report, Feedback, ветки оценок)
 - [x] Этап 8 — Продление курса (ФТ-18)
-- [~] Этап 9 — Панели управления (спецификация API и Postman-коллекция готовы в SA/stage9-dashboards.md; 9.2, 9.3, 9.10 реализованы кодом, UI и остальные endpoints не начаты; 9B специалист)
+- [x] Этап 9 — Панели управления (9.4–9.9 и 9.12–9.16 реализованы по SA/stage9-dashboards.md; 9.2, 9.3, 9.10 уже были готовы; UI — post-MVP)
 - [ ] Этап 10 — Ошибки и edge cases (ФТ-21, ФТ-22)
 - [ ] Этап 11 — Non-functional (шифрование, хранение, мониторинг, AIModelLog)
 - [ ] Этап 12 — Пилот (seed, чек-листы CJM, метрики, go/no-go)
@@ -426,7 +426,7 @@ API: создание нового ClientEnrollment при продлении
 ФТ-23
 > Реализовано: `packages/ai/src/diary-processor.ts` подгружает последние 50 записей дневника из предыдущего завершённого enrollment и передаёт их в `DiaryAnalysisInput.previousHistory`. Prompt в `openai-compatible-engine.ts` включает сводку по предыдущему курсу.
 Этап 9. Панели управления (Фаза 7 SA)
-> Подготовлена документация и Postman-коллекция для ручной проверки: `SA/stage9-dashboards.md` + `postman/stage9-dashboards.postman_collection.json`. API-контракты для всех пунктов 9.4–9.9 и 9.12–9.16 зафиксированы; код endpoints пока не написан.
+> Реализованы все dashboard-ендпоинты: `SA/stage9-dashboards.md` + `postman/stage9-dashboards.postman_collection.json`. UI-панели — post-MVP.
 
 9A. Администратор (ФТ-19)
 #	Шаг
@@ -438,18 +438,24 @@ Auth для admin API — ✓ MVP: Bearer token (adminAPI.md §1); post-MVP: JWT
 9.3
 Генерация ссылки из UI — ✓ adminAPI.md §4.4 (UI post-MVP; MVP — Postman §8)
 > API реализовано на 3.2/3.5; UI — post-MVP, не начато.
-9.4
+9.4 [x]
 Просмотр дневника (анонимизированно)
-9.5
+> Реализовано: `GET /admin/enrollments/:id/diary` в `packages/api/src/services/dashboards.ts` + `routes/dashboards.ts`. Фильтры по дате и статусу, без персональных данных в ответе.
+9.5 [x]
 Статистика соблюдения рекомендаций
-9.6
+> Реализовано: `GET /admin/statistics/recommendations` — агрегация по статусам и приоритетам, фильтр по курсу и периоду.
+9.6 [x]
 Inbox критической обратной связи (1–3 звезды)
-9.7
+> Реализовано: `GET /admin/feedback/critical`. Добавлено поле `isResolved` в модель `Feedback` и миграция `20260806130000-add-is-resolved-to-feedbacks.ts`. Фильтр `unresolvedOnly`.
+9.7 [x]
 Список клиентов с предложением продления
-9.8
+> Реализовано: `GET /admin/renewal-offers` со сводкой по статусам и конверсией.
+9.8 [x]
 Экспорт CSV/Excel
-9.9
+> Реализовано: `GET /admin/export/clients?format=csv` — CSV с BOM и UTF-8. XLSX — post-MVP.
+9.9 [x]
 Статус недоставленных сообщений
+> Реализовано: `GET /admin/messages/failed` с фильтром `exhaustedRetries` для исчерпавших retry.
 9.10
 Ссылки с истёкшим сроком (для CJM: повторная генерация)
 > Эндпоинт `GET /admin/enrollments/expired-links` реализован кодом на шаге 3.6 (`packages/api/src/services/enrollments.ts`); UI-панель не начата.
@@ -457,16 +463,21 @@ Inbox критической обратной связи (1–3 звезды)
 #	Шаг
 9.11
 Auth + привязка специалиста к клиентам
-9.12
+9.12 [x]
 Просмотр итогового Report своих клиентов
-9.13
+> Реализовано: `GET /specialist/clients/:id/reports` — итоговые отчёты по клиенту с фильтром по типу.
+9.13 [x]
 % соблюдения рекомендаций
-9.14
+> Реализовано: `GET /specialist/clients/:id/compliance` — доля применённых рекомендаций за текущий enrollment.
+9.14 [x]
 ТОП проблем в питании
-9.15
+> Реализовано: `GET /specialist/statistics/problems` — агрегация `problemAreas` из отчётов.
+9.15 [x]
 Статистика активности (частота заполнения дневника)
-9.16
+> Реализовано: `GET /specialist/statistics/activity` — заполнение дневника по дням, фильтр `minFillRate`.
+9.16 [x]
 Просмотр Feedback (read-only)
+> Реализовано: `GET /specialist/clients/:id/feedback` — read-only список feedback клиента.
 Этап 10. Ошибки и edge cases (Фаза 8 SA)
 #	Шаг	Связь с ФТ
 10.1

@@ -9,6 +9,10 @@ import { getHealthStatus } from './health.js';
 import { ApiError, sendApiError, sendJson } from './http.js';
 import { findRoute, type RouteDefinition } from './router.js';
 import { createClientRoutes } from './routes/clients.js';
+import {
+  createAdminDashboardRoutes,
+  createSpecialistDashboardRoutes,
+} from './routes/dashboards.js';
 import { createCourseRoutes } from './routes/courses.js';
 import { createEnrollmentLinkRoutes } from './routes/enrollment-links.js';
 import { createEnrollmentRoutes } from './routes/enrollments.js';
@@ -34,6 +38,8 @@ function buildRoutes(): RouteDefinition[] {
     ...createEnrollmentRoutes(botUsername),
     ...createCourseRoutes(),
     ...createClientRoutes(botUsername),
+    ...createAdminDashboardRoutes(botUsername),
+    ...createSpecialistDashboardRoutes(),
   ];
 }
 

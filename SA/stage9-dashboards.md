@@ -23,19 +23,19 @@
 | 9.1 | Auth для admin API | ✓ MVP (Bearer) | `Authorization: Bearer <ADMIN_API_TOKEN>` |
 | 9.2 | Список клиентов: active / inactive | ✓ Реализовано | `GET /api/v1/admin/clients` |
 | 9.3 | Генерация ссылки из UI | ✓ Реализовано | `POST /api/v1/admin/enrollments/:id/link` |
-| 9.4 | Просмотр дневника (анонимизированно) | ⏳ Не реализовано | `GET /api/v1/admin/enrollments/:id/diary` |
-| 9.5 | Статистика соблюдения рекомендаций | ⏳ Не реализовано | `GET /api/v1/admin/statistics/recommendations` |
-| 9.6 | Inbox критической обратной связи (1–3 звезды) | ⏳ Не реализовано | `GET /api/v1/admin/feedback/critical` |
-| 9.7 | Список клиентов с предложением продления | ⏳ Не реализовано | `GET /api/v1/admin/renewal-offers` |
-| 9.8 | Экспорт CSV/Excel | ⏳ Не реализовано | `GET /api/v1/admin/export/clients` |
-| 9.9 | Статус недоставленных сообщений | ⏳ Не реализовано | `GET /api/v1/admin/messages/failed` |
+| 9.4 | Просмотр дневника (анонимизированно) | ✓ Реализовано | `GET /api/v1/admin/enrollments/:id/diary` |
+| 9.5 | Статистика соблюдения рекомендаций | ✓ Реализовано | `GET /api/v1/admin/statistics/recommendations` |
+| 9.6 | Inbox критической обратной связи (1–3 звезды) | ✓ Реализовано | `GET /api/v1/admin/feedback/critical` |
+| 9.7 | Список клиентов с предложением продления | ✓ Реализовано | `GET /api/v1/admin/renewal-offers` |
+| 9.8 | Экспорт CSV/Excel | ✓ Реализовано (CSV) | `GET /api/v1/admin/export/clients` |
+| 9.9 | Статус недоставленных сообщений | ✓ Реализовано | `GET /api/v1/admin/messages/failed` |
 | 9.10 | Ссылки с истёкшим сроком (CJM) | ✓ Реализовано | `GET /api/v1/admin/enrollments/expired-links` |
 | 9.11 | Auth + привязка специалиста к клиентам | ⏳ Не реализовано | MVP: тот же Bearer, post-MVP — JWT/RBAC |
-| 9.12 | Просмотр итогового Report своих клиентов | ⏳ Не реализовано | `GET /api/v1/specialist/clients/:id/reports` |
-| 9.13 | % соблюдения рекомендаций | ⏳ Не реализовано | `GET /api/v1/specialist/clients/:id/compliance` |
-| 9.14 | ТОП проблем в питании | ⏳ Не реализовано | `GET /api/v1/specialist/statistics/problems` |
-| 9.15 | Статистика активности (заполнение дневника) | ⏳ Не реализовано | `GET /api/v1/specialist/statistics/activity` |
-| 9.16 | Просмотр Feedback (read-only) | ⏳ Не реализовано | `GET /api/v1/specialist/clients/:id/feedback` |
+| 9.12 | Просмотр итогового Report своих клиентов | ✓ Реализовано | `GET /api/v1/specialist/clients/:id/reports` |
+| 9.13 | % соблюдения рекомендаций | ✓ Реализовано | `GET /api/v1/specialist/clients/:id/compliance` |
+| 9.14 | ТОП проблем в питании | ✓ Реализовано | `GET /api/v1/specialist/statistics/problems` |
+| 9.15 | Статистика активности (заполнение дневника) | ✓ Реализовано | `GET /api/v1/specialist/statistics/activity` |
+| 9.16 | Просмотр Feedback (read-only) | ✓ Реализовано | `GET /api/v1/specialist/clients/:id/feedback` |
 
 ✓ — код уже в репозитории и отвечает на запросы.  
 ⏳ — контракт описан в этом документе, но endpoint пока вернёт `404`.
@@ -251,7 +251,7 @@ MVP используется один токен для администрато
 
 **Endpoint:** `GET /api/v1/admin/enrollments/:enrollmentId/diary`
 
-**Статус:** ⏳ не реализовано.
+**Статус:** ✓ реализовано.
 
 **Назначение:** админ видит записи дневника питания без имени клиента. Используется для понимания общих паттернов, а не для контроля конкретного человека.
 
@@ -299,7 +299,7 @@ MVP используется один токен для администрато
 
 **Endpoint:** `GET /api/v1/admin/statistics/recommendations`
 
-**Статус:** ⏳ не реализовано.
+**Статус:** ✓ реализовано.
 
 **Назначение:** показать, какой процент рекомендаций клиенты применяют, а какие отклоняют. Помогает оценить эффективность программы.
 
@@ -344,7 +344,7 @@ MVP используется один токен для администрато
 
 **Endpoint:** `GET /api/v1/admin/feedback/critical`
 
-**Статус:** ⏳ не реализовано.
+**Статус:** ✓ реализовано.
 
 **Назначение:** оперативно показать администратору негативный feedback (оценка 1–3), чтобы он мог связаться с клиентом. Ответы с 4–5 звёздами здесь не показываются.
 
@@ -387,7 +387,7 @@ MVP используется один токен для администрато
 
 **Endpoint:** `GET /api/v1/admin/renewal-offers`
 
-**Статус:** ⏳ не реализовано.
+**Статус:** ✓ реализовано.
 
 **Назначение:** показать все предложения продлить курс, их статус и конверсию. Источник данных — таблица `renewal_offers`.
 
@@ -440,7 +440,7 @@ MVP используется один токен для администрато
 
 **Endpoint:** `GET /api/v1/admin/export/clients`
 
-**Статус:** ⏳ не реализовано.
+**Статус:** ✓ реализовано (CSV). XLSX — post-MVP.
 
 **Назначение:** выгрузить список клиентов в файл для Excel или Google Таблиц. В MVP — CSV, так как не требует дополнительных библиотек.
 
@@ -473,7 +473,7 @@ clientId,displayName,enrollmentStatus,onboardingStatus,notificationsEnabled,link
 
 **Endpoint:** `GET /api/v1/admin/messages/failed`
 
-**Статус:** ⏳ не реализовано.
+**Статус:** ✓ реализовано.
 
 **Назначение:** показать сообщения, которые не удалось доставить в Telegram (`deliveryStatus = delivery_failed`). Используется для мониторинга сбоев и ручного дообращения к клиенту.
 
@@ -481,7 +481,7 @@ clientId,displayName,enrollmentStatus,onboardingStatus,notificationsEnabled,link
 
 | Параметр | Описание |
 |----------|----------|
-| `retryCount` | `true` — только те, что исчерпали все retry (по умолчанию 3) |
+| `exhaustedRetries` | `true` — только те, что исчерпали все retry (по умолчанию 3) |
 | `page`, `limit` | Пагинация |
 
 **Пример ответа:**
@@ -507,7 +507,7 @@ clientId,displayName,enrollmentStatus,onboardingStatus,notificationsEnabled,link
 **Как проверить после реализации:**
 1. Создать в БД сообщение со статусом `delivery_failed` и `retryCount = 3`.
 2. Вызвать endpoint — убедиться, что оно попало в список.
-3. Проверить `?retryCount=true` — показываются только исчерпавшие retry.
+3. Проверить `?exhaustedRetries=true` — показываются только исчерпавшие retry.
 
 ---
 
@@ -557,7 +557,7 @@ clientId,displayName,enrollmentStatus,onboardingStatus,notificationsEnabled,link
 
 **Endpoint:** `GET /api/v1/specialist/clients/:clientId/reports`
 
-**Статус:** ⏳ не реализовано.
+**Статус:** ✓ реализовано.
 
 **Назначение:** специалист видит итоговые отчёты по клиенту за разные периоды (weekly, monthly, final).
 
@@ -613,7 +613,7 @@ clientId,displayName,enrollmentStatus,onboardingStatus,notificationsEnabled,link
 
 **Endpoint:** `GET /api/v1/specialist/clients/:clientId/compliance`
 
-**Статус:** ⏳ не реализовано.
+**Статус:** ✓ реализовано.
 
 **Назначение:** показать, какой процент рекомендаций клиент применил за текущий enrollment.
 
@@ -641,7 +641,7 @@ clientId,displayName,enrollmentStatus,onboardingStatus,notificationsEnabled,link
 
 **Endpoint:** `GET /api/v1/specialist/statistics/problems`
 
-**Статус:** ⏳ не реализовано.
+**Статус:** ✓ реализовано.
 
 **Назначение:** агрегировать проблемы из отчётов (поле `problemAreas`) по всем клиентам специалиста. Помогает понять, на чём сфокусировать групповые рекомендации.
 
@@ -676,7 +676,7 @@ clientId,displayName,enrollmentStatus,onboardingStatus,notificationsEnabled,link
 
 **Endpoint:** `GET /api/v1/specialist/statistics/activity`
 
-**Статус:** ⏳ не реализовано.
+**Статус:** ✓ реализовано.
 
 **Назначение:** показать, как часто клиенты заполняют дневник. Используется для выявления клиентов, которые отваливаются.
 
@@ -718,7 +718,7 @@ clientId,displayName,enrollmentStatus,onboardingStatus,notificationsEnabled,link
 
 **Endpoint:** `GET /api/v1/specialist/clients/:clientId/feedback`
 
-**Статус:** ⏳ не реализовано.
+**Статус:** ✓ реализовано.
 
 **Назначение:** специалист читает feedback клиента о рекомендациях или курсе, но не может его редактировать.
 
@@ -769,19 +769,19 @@ clientId,displayName,enrollmentStatus,onboardingStatus,notificationsEnabled,link
 - [ ] Без заголовка `Authorization` — все admin endpoints возвращают `401`.
 - [ ] С неверным токеном — все admin endpoints возвращают `401`.
 
-### Нереализованные endpoints (вернут 404 до написания кода)
+### Реализованные endpoints (проверить после подготовки тестовых данных)
 
-- [ ] `GET /api/v1/admin/enrollments/:enrollmentId/diary` — пока `404`, после реализации — возвращает дневник без имени клиента.
-- [ ] `GET /api/v1/admin/statistics/recommendations` — пока `404`, после реализации — считает соблюдение рекомендаций.
-- [ ] `GET /api/v1/admin/feedback/critical` — пока `404`, после реализации — возвращает feedback 1–3 звёзд.
-- [ ] `GET /api/v1/admin/renewal-offers` — пока `404`, после реализации — возвращает предложения продления.
-- [ ] `GET /api/v1/admin/export/clients?format=csv` — пока `404`, после реализации — выгружает CSV.
-- [ ] `GET /api/v1/admin/messages/failed` — пока `404`, после реализации — возвращает недоставленные сообщения.
-- [ ] `GET /api/v1/specialist/clients/:clientId/reports` — пока `404`, после реализации — возвращает отчёты.
-- [ ] `GET /api/v1/specialist/clients/:clientId/compliance` — пока `404`, после реализации — считает % соблюдения.
-- [ ] `GET /api/v1/specialist/statistics/problems` — пока `404`, после реализации — возвращает топ проблем.
-- [ ] `GET /api/v1/specialist/statistics/activity` — пока `404`, после реализации — возвращает статистику активности.
-- [ ] `GET /api/v1/specialist/clients/:clientId/feedback` — пока `404`, после реализации — возвращает feedback read-only.
+- [ ] `GET /api/v1/admin/enrollments/:enrollmentId/diary` — возвращает дневник без имени клиента.
+- [ ] `GET /api/v1/admin/statistics/recommendations` — считает соблюдение рекомендаций.
+- [ ] `GET /api/v1/admin/feedback/critical` — возвращает feedback 1–3 звёзд.
+- [ ] `GET /api/v1/admin/renewal-offers` — возвращает предложения продления.
+- [ ] `GET /api/v1/admin/export/clients?format=csv` — выгружает CSV.
+- [ ] `GET /api/v1/admin/messages/failed` — возвращает недоставленные сообщения.
+- [ ] `GET /api/v1/specialist/clients/:clientId/reports` — возвращает отчёты.
+- [ ] `GET /api/v1/specialist/clients/:clientId/compliance` — считает % соблюдения.
+- [ ] `GET /api/v1/specialist/statistics/problems` — возвращает топ проблем.
+- [ ] `GET /api/v1/specialist/statistics/activity` — возвращает статистику активности.
+- [ ] `GET /api/v1/specialist/clients/:clientId/feedback` — возвращает feedback read-only.
 
 ---
 

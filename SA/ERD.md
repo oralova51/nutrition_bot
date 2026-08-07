@@ -230,7 +230,6 @@ erDiagram
         int finalPrice "копейки"
         timestamp offeredAt
         timestamp clickedAt "nullable"
-        timestamp updatedAt
     }
 
     REPORT {
