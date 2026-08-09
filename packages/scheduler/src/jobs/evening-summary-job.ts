@@ -1,31 +1,26 @@
-// Вечернее напоминание о незаполненном дневнике (roadmap 4.16–4.19).
-// Запускается каждые 30 минут, проверяет локальное время 20:00 и количество
-// записей NutritionDiary за день. Если записей < 3 — отправляет мягкое напоминание.
-// force=true — для ручного теста: игнорирует время, лимит дневника и дедуп за день.
+// Ежедневная вечерняя сводка питания (ФТ-24, roadmap 4.20–4.24).
+// В 21:00 по TZ клиента анализирует filled-записи дня и отправляет soft summary.
+// force=true — для ручного теста: игнорирует 21:00 и дневной дедуп.
 
 import { fromZonedTime, format, toZonedTime } from 'date-fns-tz';
 import { Op } from 'sequelize';
+import { buildAndSendEveningSummary } from '@nutrition-bot/ai';
 import {
   Client,
   ClientEnrollment,
   DEFAULT_TIMEZONE,
-  Message,
   NotificationSettings,
   NutritionDiary,
-  sendTelegramMessageWithRetry,
 } from '@nutrition-bot/shared';
 import type { Logger } from 'pino';
 import type { SchedulerJobOptions, SchedulerJobResult } from './types.js';
-
-const EVENING_REMINDER_TEXT =
-  'Мне кажется, я не услышал о твоём ужине. Если ты что-нибудь ел, поделись со мной?';
 
 interface ClientWithAssociations extends Client {
   notificationSettings?: NotificationSettings;
   enrollments?: ClientEnrollment[];
 }
 
-export async function runEveningReminderJob(
+export async function runEveningSummaryJob(
   logger: Logger,
   options: SchedulerJobOptions = {},
 ): Promise<SchedulerJobResult> {
@@ -45,7 +40,7 @@ export async function runEveningReminderJob(
         required: true,
         where: {
           enabled: true,
-          enabledTypes: { [Op.contains]: ['diary'] },
+          enabledTypes: { [Op.contains]: ['evening_summary'] },
         },
       },
       {
@@ -63,11 +58,11 @@ export async function runEveningReminderJob(
 
   logger.info(
     { count: clients.length, force, clientId: options.clientId ?? null },
-    'Выборка клиентов для вечернего напоминания',
+    'Выборка клиентов для вечерней сводки',
   );
 
   const result: SchedulerJobResult = {
-    job: 'evening-reminder',
+    job: 'evening-summary',
     force,
     considered: clients.length,
     sent: 0,
@@ -87,63 +82,50 @@ export async function runEveningReminderJob(
     const timezone = DEFAULT_TIMEZONE;
     const zonedNow = toZonedTime(new Date(), timezone);
     const currentTime = format(zonedNow, 'HH:mm', { timeZone: timezone });
-    if (!force && currentTime !== '20:00') {
+    if (!force && currentTime !== '21:00') {
       result.skipped += 1;
       continue;
     }
 
-    const { start, end } = getZonedDayRange(new Date(), timezone);
-    if (!force) {
-      const diaryCount = await NutritionDiary.count({
-        where: {
-          clientEnrollmentId: enrollment.id,
-          mealAt: { [Op.between]: [start, end] },
-        },
-      });
-
-      if (diaryCount >= 3) {
-        result.skipped += 1;
-        continue;
-      }
-
-      const alreadySent = await hasEveningReminderToday(client.id, start, end);
-      if (alreadySent) {
-        result.skipped += 1;
-        continue;
-      }
-    }
+    const localDate = format(zonedNow, 'yyyy-MM-dd', { timeZone: timezone });
+    const dayRange = getZonedDayRange(new Date(), timezone);
 
     try {
-      await sendTelegramMessageWithRetry({
-        telegramId: client.telegramId!,
-        text: EVENING_REMINDER_TEXT,
-        clientId: client.id,
-        type: 'evening_reminder',
-        category: 'optional',
+      const dayEntries = await NutritionDiary.findAll({
+        where: {
+          clientEnrollmentId: enrollment.id,
+          status: 'filled',
+          mealAt: { [Op.between]: [dayRange.start, dayRange.end] },
+        },
+        order: [['mealAt', 'ASC']],
       });
-      result.sent += 1;
-      logger.info(
-        { clientId: client.id, timezone, force },
-        'Вечернее напоминание отправлено',
-      );
+
+      const outcome = await buildAndSendEveningSummary({
+        client,
+        enrollmentId: enrollment.id,
+        dayEntries,
+        localDate,
+        timezone,
+        dayRange,
+        force,
+      });
+
+      if (outcome.sent) {
+        result.sent += 1;
+      } else {
+        result.skipped += 1;
+        logger.debug(
+          { clientId: client.id, reason: outcome.reason ?? 'skipped' },
+          'Вечерняя сводка пропущена',
+        );
+      }
     } catch (err) {
       result.errors += 1;
-      logger.error({ clientId: client.id, err }, 'Не удалось отправить вечернее напоминание');
+      logger.error({ clientId: client.id, err }, 'Не удалось отправить вечернюю сводку');
     }
   }
 
   return result;
-}
-
-async function hasEveningReminderToday(clientId: string, start: Date, end: Date): Promise<boolean> {
-  const count = await Message.count({
-    where: {
-      clientId,
-      type: 'evening_reminder',
-      createdAt: { [Op.between]: [start, end] },
-    },
-  });
-  return count > 0;
 }
 
 function getZonedDayRange(date: Date, timezone: string): { start: Date; end: Date } {

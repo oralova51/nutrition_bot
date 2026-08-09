@@ -1,4 +1,4 @@
-// Точка входа планировщика: cron/BullMQ, выборка клиентов по слотам.
+// Точка входа планировщика: cron + HTTP API для ручного запуска job'ов.
 // Выбор движка и job-ы добавляются на шагах 4.1 и далее.
 
 import { Bot } from 'grammy';
@@ -9,9 +9,12 @@ import {
   ensureModelsInitialized,
   LOG_EVENTS,
 } from '@nutrition-bot/shared';
-import { resolveBotToken } from './config.js';
+import type { Server } from 'node:http';
+import { resolveAdminApiToken, resolveBotToken, resolveSchedulerPort } from './config.js';
+import { createSchedulerHttpServer } from './http-server.js';
 import { runDailyReminderJob } from './jobs/daily-reminder.js';
 import { runEveningReminderJob } from './jobs/evening-reminder-job.js';
+import { runEveningSummaryJob } from './jobs/evening-summary-job.js';
 import { runCourseCompletionJob } from './jobs/course-completion-job.js';
 import { runDeliveryFailureAlertJob } from './jobs/delivery-failure-alert-job.js';
 import { runInactivityDeactivationJob } from './jobs/inactivity-deactivation-job.js';
@@ -22,6 +25,8 @@ import { runQuestionnaireReminderJob } from './jobs/questionnaire-reminder.js';
 
 export const SERVICE_NAME = 'scheduler';
 export const logger = createLogger(SERVICE_NAME);
+
+let httpServer: Server | undefined;
 
 async function main(): Promise<void> {
   ensureModelsInitialized();
@@ -59,6 +64,14 @@ async function main(): Promise<void> {
   schedule('*/30 * * * *', () => {
     void runEveningReminderJob(logger).catch((err: unknown) => {
       logger.error({ err }, 'Вечернее напоминание: необработанная ошибка job');
+    });
+  });
+
+  // Ежедневная вечерняя сводка питания (roadmap 4.20–4.24, ФТ-24).
+  // 21:00 — после evening reminder, чтобы клиент успел дописать ужин.
+  schedule('*/30 * * * *', () => {
+    void runEveningSummaryJob(logger).catch((err: unknown) => {
+      logger.error({ err }, 'Вечерняя сводка: необработанная ошибка job');
     });
   });
 
@@ -100,9 +113,16 @@ async function main(): Promise<void> {
     });
   });
 
+  const port = resolveSchedulerPort();
+  const adminApiToken = resolveAdminApiToken();
+  httpServer = createSchedulerHttpServer(logger, adminApiToken);
+  await new Promise<void>((resolve) => {
+    httpServer?.listen(port, resolve);
+  });
+
   logger.info(
-    { event: LOG_EVENTS.SERVICE_STARTED },
-    `${SERVICE_NAME} service started with scheduled jobs`,
+    { event: LOG_EVENTS.SERVICE_STARTED, port },
+    `${SERVICE_NAME} service started with scheduled jobs and HTTP API`,
   );
 }
 
@@ -114,7 +134,16 @@ void main().catch((err: unknown) => {
 function shutdown(signal: string): void {
   logger.info({ signal }, `Shutting down ${SERVICE_NAME} service`);
 
-  void closeDatabaseConnection()
+  const stopHttp = new Promise<void>((resolve, reject) => {
+    if (!httpServer) {
+      resolve();
+      return;
+    }
+    httpServer.close((err) => (err ? reject(err) : resolve()));
+  });
+
+  void stopHttp
+    .then(() => closeDatabaseConnection())
     .then(() => {
       logger.info(`${SERVICE_NAME} service stopped`);
       process.exit(0);

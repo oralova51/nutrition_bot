@@ -11,7 +11,7 @@ import {
   type Sequelize,
 } from 'sequelize';
 
-export const REPORT_TYPES = ['weekly', 'monthly', 'final'] as const;
+export const REPORT_TYPES = ['daily', 'weekly', 'monthly', 'final'] as const;
 
 export type ReportType = (typeof REPORT_TYPES)[number];
 

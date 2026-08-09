@@ -5,5 +5,6 @@ export * from './mock-engine.js';
 export * from './openai-compatible-engine.js';
 export * from './prompts.js';
 export * from './diary-processor.js';
+export * from './evening-summary.js';
 export * from './rate-limiter.js';
 export * from './logger.js';

@@ -19,7 +19,12 @@ export const NOTIFICATION_FREQUENCIES = [
 
 export type NotificationFrequency = (typeof NOTIFICATION_FREQUENCIES)[number];
 
-export const NOTIFICATION_TYPES = ['diary', 'recommendations', 'weekly_report'] as const;
+export const NOTIFICATION_TYPES = [
+  'diary',
+  'recommendations',
+  'weekly_report',
+  'evening_summary',
+] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -70,7 +75,7 @@ export function initNotificationSettingsModel(sequelize: Sequelize): typeof Noti
       enabledTypes: {
         type: DataTypes.JSONB,
         allowNull: false,
-        defaultValue: ['diary', 'recommendations', 'weekly_report'],
+        defaultValue: ['diary', 'recommendations', 'weekly_report', 'evening_summary'],
       },
       timezone: {
         type: DataTypes.STRING(64),

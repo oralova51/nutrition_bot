@@ -4,13 +4,13 @@
 > Полный документ читай **только** если нужны детали, отсутствующие здесь. Источник указан в скобках рядом с разделом.
 > При изменении любого файла в `SA/` — обнови соответствующий раздел этой выжимки.
 
-**Карта источников:** `vision.md` (продукт/метрики) · `UserResearch.md` (персоны) · `Domain_Analysis_v2.md` (сущности, бизнес-правила) · `ERD.md` (схема БД, поля, ограничения) · `Functional_Requirements.md` (ФТ-1..ФТ-23) · `nonFR.md` (нефункц. требования) · `CJM.md` (сценарий) · `anketa.md` (вопросы онбординга) · `adminAPI.md` (REST + Telegram Bot API) · `stage9-dashboards.md` (панели управления: админ и специалист, API-контракты + Postman).
+**Карта источников:** `vision.md` (продукт/метрики) · `UserResearch.md` (персоны) · `Domain_Analysis_v2.md` (сущности, бизнес-правила) · `ERD.md` (схема БД, поля, ограничения) · `Functional_Requirements.md` (ФТ-1..ФТ-24) · `nonFR.md` (нефункц. требования) · `CJM.md` (сценарий) · `anketa.md` (вопросы онбординга) · `adminAPI.md` (REST + Telegram Bot API) · `stage9-dashboards.md` (панели управления: админ и специалист, API-контракты + Postman) · `evening-summary.md` (ФТ-24 ежедневная вечерняя сводка + чек-лист/Postman).
 
 ---
 
 ## 1. Продукт (vision.md)
 
-Telegram-бот «Виртуальный консультант по питанию» для клиентов фитнес-студии. Мягко, ненавязчиво помогает соблюдать питание: собирает дневник питания, анализирует через AI, шлёт персональные рекомендации, финальный отчёт и предложение продлить курс.
+Telegram-бот «Виртуальный консультант по питанию» для клиентов фитнес-студии. Мягко, ненавязчиво помогает соблюдать питание: собирает дневник питания, анализирует через AI, шлёт персональные рекомендации, **ежедневную вечернюю сводку** (ФТ-24), финальный отчёт и предложение продлить курс.
 
 - **ЦА (UserResearch.md):** Анна (боится осуждения, не любит считать калории) и Марина (мало времени). Общий вывод: минимум ручного ввода, приблизительные ответы — норма, фото как основной способ ввода, короткая анкета.
 - **Тон:** без критики, признать обстоятельства → предложить альтернативу.
@@ -44,13 +44,13 @@ Telegram-бот «Виртуальный консультант по питан�
 - **EnrollmentLinkAttempt** (лог ФТ-1): `id, linkId, attemptedAt, telegramId?, result(success|expired|already_used|invalid_code|enrollment_cancelled)`
 - **NutritionDiary:** `id, clientEnrollmentId(NOT NULL), clientId(denorm), mealAt, description, approxCalories?, hasPhoto, photoRef?(encrypted), status(filled|pending|needs_clarification), createdAt`
 - **Habit:** `id, clientId, description, status(active|inactive), frequency(daily|weekdays|custom)`
-- **NotificationSettings** (1:1 к Client): `id, clientId(unique), reminderTime(HH:mm), frequency(daily|every_other_day|three_per_week|custom_days), enabledTypes(diary|recommendations|weekly_report), timezone(IANA, def Europe/Kaliningrad), enabled, disabledReason?(user_request|inactivity)`
+- **NotificationSettings** (1:1 к Client): `id, clientId(unique), reminderTime(HH:mm), frequency(daily|every_other_day|three_per_week|custom_days), enabledTypes(diary|recommendations|weekly_report|evening_summary), timezone(IANA, def Europe/Kaliningrad), enabled, disabledReason?(user_request|inactivity)`
 - **Questionnaire:** `id, clientEnrollmentId, clientId(denorm), answers(json), currentQuestion, status(in_progress|completed), lastAnswerAt?, lastReminderAt?, completedAt?, analysisResult?(json)`
 - **Recommendation:** `id, clientId, nutritionDiaryId?, questionnaireId?(ровно один из двух), type(product|habit|regimen|calories), priority(critical|high|medium|low), content?(текст рекомендации), status(sent|read|applied|dismissed), createdAt`
-- **Message:** `id, clientId, recommendationId?, type(recommendation|reminder|questionnaire_reminder|evening_reminder|report|info), category(transactional|optional), content, channel(telegram|whatsapp|max), deliveryStatus(sent|delivered|read|delivery_failed), retryCount(0..3), createdAt`
+- **Message:** `id, clientId, recommendationId?, type(recommendation|reminder|questionnaire_reminder|evening_reminder|evening_summary|report|info), category(transactional|optional), content, channel(telegram|whatsapp|max), deliveryStatus(sent|delivered|read|delivery_failed), retryCount(0..3), createdAt`
 - **Reminder:** `id, clientId, type(fill_diary|check_recommendation), schedule, status(active|inactive|done)`
 - **Feedback:** `id, clientId, recommendationId, rating(1..5), comment?(обязателен при 1-3), isApplied?, isResolved(default false), createdAt`
-- **Report:** `id, clientEnrollmentId(NOT NULL), clientId(denorm), periodStart, periodEnd, type(weekly|monthly|final), diaryStats(json), adherencePercent, problemAreas(json), dynamics(json), createdAt`
+- **Report:** `id, clientEnrollmentId(NOT NULL), clientId(denorm), periodStart, periodEnd, type(daily|weekly|monthly|final), diaryStats(json), adherencePercent, problemAreas(json), dynamics(json), aiSummary?, createdAt`
 - **RenewalOffer:** `id, clientId, enrollmentId(NOT NULL), status(sent|clicked|converted|dismissed), checkoutUrl, basePrice(int копейки), discountPercent(0–100), finalPrice(int копейки), offeredAt, clickedAt?` — предложение продления курса (roadmap 8)
 - **Progress:** `id, clientEnrollmentId(NOT NULL), clientId(denorm), goalId, measuredAt, metrics(json), achievementPercent, comment?`
 - **AIModelLog** (без связей): `id, version, updatedAt, updateReason, analystComment`
@@ -85,7 +85,7 @@ Telegram-бот «Виртуальный консультант по питан�
 
 **Фаза 1 — Онбординг:** ФТ-1 генерация/управление ссылками (Critical) · ФТ-2 онбординг + анкета с сохранением прогресса и мягким напоминанием (Critical) · ФТ-3 настройка уведомлений после анкеты (Critical).
 **Фаза 2 — Сбор данных:** ФТ-4 ежедневное напоминание о дневнике (Critical) · ФТ-5 приём текста/фото питания, ретрай доставки 5 мин ×3 (Critical).
-**Фаза 3 — Анализ:** ФТ-6 анализ паттернов после каждого ввода (Critical) · ФТ-7 мягкие рекомендации, макс 2-3/день (Critical) · ФТ-8 вечернее (20:00) напоминание о незаполненном дневнике (High).
+**Фаза 3 — Анализ:** ФТ-6 анализ паттернов после каждого ввода (Critical) · ФТ-7 мягкие рекомендации, макс 2-3/день (Critical) · ФТ-8 вечернее (20:00) напоминание о незаполненном дневнике (High) · **ФТ-24 ежедневный evening summary в 21:00** (High) — см. `evening-summary.md`.
 **Фаза 4 — Активность:** ФТ-9 предупреждение при 48 ч молчания (High) · ФТ-10 автоотключение при 72+ ч (High) · ФТ-11 восстановление при любом сообщении (High) · ФТ-12 добровольное /stop /pause с причиной user_request (High).
 **Фаза 5 — Завершение:** ФТ-13 определение конца курса (Critical) · ФТ-14 итоговый отчёт (Critical) · ФТ-15 запрос оценки 1-5 (High) · ФТ-16 при 1-3 звёздах — комментарий + уведомление админу (High) · ФТ-17 при 4-5 — благодарность + отзыв на 2Gis/Яндекс за бонус (High).
 **Фаза 6 — Продление:** ФТ-18 предложение продлить со скидкой 15% (High).
@@ -125,7 +125,8 @@ Telegram-бот «Виртуальный консультант по питан�
 ## 9. Панели управления (stage9-dashboards.md)
 
 - **Админ (ФТ-19):** `GET /admin/enrollments/:id/diary` (анонимно); `GET /admin/statistics/recommendations` (соблюдение по статусам и приоритетам); `GET /admin/feedback/critical` (рейтинг ≤ 3, фильтр `unresolvedOnly`, поле `isResolved`); `GET /admin/renewal-offers` (сводка по статусам и конверсия); `GET /admin/export/clients?format=csv` (CSV c BOM, UTF-8); `GET /admin/messages/failed` (недоставленные, фильтр `exhaustedRetries`).
-- **Специалист (ФТ-20):** `GET /specialist/clients/:id/reports` (итоговые отчёты); `GET /specialist/clients/:id/compliance` (процент применённых рекомендаций за текущий enrollment); `GET /specialist/statistics/problems` (топ проблем из `Report.problemAreas`); `GET /specialist/statistics/activity` (заполнение дневника, фильтр `minFillRate`); `GET /specialist/clients/:id/feedback` (read-only). MVP: тот же Bearer-токен, post-MVP — JWT/RBAC.
+- **Специалист (ФТ-20):** `GET /specialist/clients/:id/reports` (отчёты; фильтр `type=daily|weekly|monthly|final`); `GET /specialist/clients/:id/compliance` (процент применённых рекомендаций за текущий enrollment); `GET /specialist/statistics/problems` (топ проблем из `Report.problemAreas`); `GET /specialist/statistics/activity` (заполнение дневника, фильтр `minFillRate`); `GET /specialist/clients/:id/feedback` (read-only). MVP: тот же Bearer-токен, post-MVP — JWT/RBAC.
+- **Scheduler internal (тест job'ов):** `POST /internal/jobs/daily-reminder|evening-reminder|evening-summary` с `force=true` (+ опц. `clientId`); auth Bearer admin-токен. Детали ФТ-24: `evening-summary.md`.
 
 ---
 

@@ -73,15 +73,19 @@ export const up: Migration = async ({ context: queryInterface }) => {
     },
   });
 
+  // Partial UNIQUE в PostgreSQL — только через индекс, не через ADD CONSTRAINT UNIQUE ... WHERE.
   await queryInterface.sequelize.query(`
     ALTER TABLE reports
       ADD CONSTRAINT reports_type_valid
         CHECK (type IN ('weekly', 'monthly', 'final')),
       ADD CONSTRAINT reports_adherence_percent_range
-        CHECK (adherence_percent IS NULL OR (adherence_percent >= 0 AND adherence_percent <= 100)),
-      ADD CONSTRAINT reports_final_one_per_enrollment
-        UNIQUE (client_enrollment_id, type)
-        WHERE type = 'final';
+        CHECK (adherence_percent IS NULL OR (adherence_percent >= 0 AND adherence_percent <= 100));
+  `);
+
+  await queryInterface.sequelize.query(`
+    CREATE UNIQUE INDEX reports_final_one_per_enrollment
+      ON reports (client_enrollment_id)
+      WHERE type = 'final';
   `);
 
   await queryInterface.addIndex('reports', ['client_enrollment_id'], {

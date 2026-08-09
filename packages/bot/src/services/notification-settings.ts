@@ -53,6 +53,7 @@ export const TYPE_LABELS: Record<NotificationType, string> = {
   diary: 'Дневник питания',
   recommendations: 'Рекомендации',
   weekly_report: 'Еженедельный отчёт',
+  evening_summary: 'Вечерняя сводка',
 };
 
 function chunk<T>(array: readonly T[], size: number): T[][] {

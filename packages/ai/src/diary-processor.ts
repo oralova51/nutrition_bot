@@ -4,8 +4,8 @@
  * Roadmap 5.3: анализ по 6 критериям.
  * Roadmap 5.4: сравнение с историей за enrollment.
  * Roadmap 5.6: лимит 2–3 рекомендации в день.
- * Roadmap 5.7: немедленная отправка при priority=critical.
- * Roadmap 5.8: отложенная отправка (конец дня) для medium/low.
+ * Roadmap 5.7–5.8 / UX: после записи дневника отправляем рекомендации сразу
+ *   (быстрая обратная связь). Вечерний job остаётся страховкой для недоставленных.
  * Roadmap 5.9: генерация текста в мягком тоне.
  * Roadmap 5.10: отправка в Telegram + сохранение Message.
  */
@@ -15,17 +15,24 @@ import {
   Client,
   ClientEnrollment,
   DEFAULT_TIMEZONE,
+  Message,
   NutritionDiary,
   Questionnaire,
   Recommendation,
   sendTelegramMessage,
-  type Message,
 } from '@nutrition-bot/shared';
 import { createAIEngine } from './factory.js';
 import { logger } from './logger.js';
-import type { DiaryAnalysisInput } from './types.js';
+import type { DiaryAnalysisInput, RecommendationPriority, RecommendationProposal } from './types.js';
 
 const MAX_DAILY_RECOMMENDATIONS = 3;
+
+const PRIORITY_ORDER: Record<RecommendationPriority, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
 
 interface ProcessDiaryResult {
   recommendationsCreated: number;
@@ -84,12 +91,13 @@ export async function processDiaryEntry(nutritionDiaryId: string): Promise<Proce
 
   const engine = createAIEngine();
   const analysis = await engine.analyzeDiary(input);
+  const proposals = sortProposalsByPriority(analysis.proposals);
 
   let recommendationsCreated = 0;
   let messagesSent = 0;
   let skippedDueToLimit = 0;
 
-  for (const proposal of analysis.proposals) {
+  for (const proposal of proposals) {
     if (recommendationsCreated >= availableSlots) {
       skippedDueToLimit += 1;
       continue;
@@ -108,11 +116,10 @@ export async function processDiaryEntry(nutritionDiaryId: string): Promise<Proce
 
     recommendationsCreated += 1;
 
-    if (proposal.priority === 'critical') {
-      await sendRecommendationMessage(client.telegramId, client.id, recommendation.id, text);
-      messagesSent += 1;
-    }
-    // medium/low: Recommendation создана, но Message отправляется вечерним job (roadmap 5.8).
+    // Быстрая обратная связь: отправляем сразу после подтверждения дневника.
+    // Вечерний job (roadmap 5.8) пропускает уже отправленные через hasRecommendationMessage.
+    await sendRecommendationMessage(client.telegramId, client.id, recommendation.id, text);
+    messagesSent += 1;
   }
 
   skippedDueToLimit += Math.max(
@@ -175,6 +182,8 @@ async function loadQuestionnaireForEnrollment(
 }
 
 async function countRecommendationsToday(clientId: string): Promise<number> {
+  // Лимит 2–3/день — по факту доставленных в Telegram, а не по «висящим» строкам в БД.
+  // Иначе сбой отправки блокирует обратную связь до конца суток.
   const now = new Date();
   const startOfDay = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0),
@@ -183,12 +192,21 @@ async function countRecommendationsToday(clientId: string): Promise<number> {
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0),
   );
 
-  return Recommendation.count({
+  return Message.count({
     where: {
       clientId,
+      type: 'recommendation',
       createdAt: { [Op.between]: [startOfDay, endOfDay] },
     },
   });
+}
+
+function sortProposalsByPriority(
+  proposals: RecommendationProposal[],
+): RecommendationProposal[] {
+  return [...proposals].sort(
+    (a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority],
+  );
 }
 
 async function sendRecommendationMessage(

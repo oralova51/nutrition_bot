@@ -853,7 +853,7 @@
                 }
               ]
             },
-            "description": "Итоговые отчёты по клиенту. После реализации вернёт 200."
+            "description": "Итоговые отчёты по клиенту (`type=final`). Также доступны `daily|weekly|monthly`."
           },
           "event": [
             {
@@ -862,6 +862,49 @@
                 "exec": [
                   "pm.test('Status is 200 or 404', function () {",
                   "  pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get client daily reports (evening summary)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/specialist/clients/{{clientId}}/reports?type=daily",
+              "host": ["{{baseUrl}}"],
+              "path": ["specialist", "clients", "{{clientId}}", "reports"],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "daily"
+                }
+              ]
+            },
+            "description": "ФТ-24: ежедневные evening summary как Report.type=daily. После force-запуска job evening-summary здесь должен появиться отчёт."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Reports payload shape', function () {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('data');",
+                  "  pm.expect(json.data).to.be.an('array');",
                   "});"
                 ],
                 "type": "text/javascript"

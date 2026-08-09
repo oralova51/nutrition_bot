@@ -1,6 +1,7 @@
 // Ежедневное напоминание о дневнике питания (roadmap 4.2–4.7).
 // Выбирает активных клиентов, у которых текущее локальное время совпадает с reminderTime
 // и частота разрешает отправку сегодня.
+// force=true — для ручного теста: игнорирует время и частоту.
 
 import { differenceInCalendarDays, parseISO } from 'date-fns';
 import { format, toZonedTime } from 'date-fns-tz';
@@ -14,6 +15,7 @@ import {
   type NotificationFrequency,
 } from '@nutrition-bot/shared';
 import type { Logger } from 'pino';
+import type { SchedulerJobOptions, SchedulerJobResult } from './types.js';
 
 interface ClientWithAssociations extends Client {
   notificationSettings?: NotificationSettings;
@@ -23,7 +25,18 @@ interface ClientWithAssociations extends Client {
 const DAILY_REMINDER_TEXT =
   'Чем ты сегодня завтракал? 🍳\n\nЗапиши в дневник — это поможет мне лучше понять твои привычки.';
 
-export async function runDailyReminderJob(logger: Logger): Promise<void> {
+export async function runDailyReminderJob(
+  logger: Logger,
+  options: SchedulerJobOptions = {},
+): Promise<SchedulerJobResult> {
+  const force = options.force === true;
+  const where: Record<string, unknown> = {
+    telegramId: { [Op.ne]: null },
+  };
+  if (options.clientId) {
+    where.id = options.clientId;
+  }
+
   const clients = await Client.findAll({
     include: [
       {
@@ -45,29 +58,46 @@ export async function runDailyReminderJob(logger: Logger): Promise<void> {
         },
       },
     ],
-    where: {
-      telegramId: { [Op.ne]: null },
-    },
+    where,
   });
 
-  logger.info({ count: clients.length }, 'Выборка клиентов для ежедневного напоминания');
+  logger.info(
+    { count: clients.length, force, clientId: options.clientId ?? null },
+    'Выборка клиентов для ежедневного напоминания',
+  );
+
+  const result: SchedulerJobResult = {
+    job: 'daily-reminder',
+    force,
+    considered: clients.length,
+    sent: 0,
+    skipped: 0,
+    errors: 0,
+  };
 
   for (const client of clients) {
     const clientWithAssoc = client as ClientWithAssociations;
     const settings = clientWithAssoc.notificationSettings;
     const enrollment = clientWithAssoc.enrollments?.[0];
-    if (!settings || !enrollment) continue;
+    if (!settings || !enrollment) {
+      result.skipped += 1;
+      continue;
+    }
 
     const timezone = DEFAULT_TIMEZONE;
     const zonedNow = toZonedTime(new Date(), timezone);
     const currentTime = format(zonedNow, 'HH:mm', { timeZone: timezone });
 
-    if (currentTime !== settings.reminderTime) {
-      continue;
-    }
+    if (!force) {
+      if (currentTime !== settings.reminderTime) {
+        result.skipped += 1;
+        continue;
+      }
 
-    if (!shouldSendToday(settings.frequency, zonedNow, timezone, enrollment)) {
-      continue;
+      if (!shouldSendToday(settings.frequency, zonedNow, timezone, enrollment)) {
+        result.skipped += 1;
+        continue;
+      }
     }
 
     try {
@@ -78,14 +108,18 @@ export async function runDailyReminderJob(logger: Logger): Promise<void> {
         type: 'reminder',
         category: 'optional',
       });
+      result.sent += 1;
       logger.info(
-        { clientId: client.id, time: currentTime, timezone },
+        { clientId: client.id, time: currentTime, timezone, force },
         'Ежедневное напоминание отправлено',
       );
     } catch (err) {
+      result.errors += 1;
       logger.error({ clientId: client.id, err }, 'Не удалось отправить ежедневное напоминание');
     }
   }
+
+  return result;
 }
 
 function shouldSendToday(

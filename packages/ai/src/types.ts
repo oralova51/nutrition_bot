@@ -54,6 +54,25 @@ export interface DiaryAnalysisResult {
   metadata: Record<string, unknown>;
 }
 
+export interface EveningSummaryInput {
+  /** Заполненные записи дневника за день. */
+  dayEntries: NutritionDiary[];
+  /** Контекст клиента для персонализации текста. */
+  clientContext: ClientContext;
+  /** Дата дня в формате YYYY-MM-DD (локальная дата клиента). */
+  localDate: string;
+}
+
+export interface EveningSummaryResult {
+  enough: string[];
+  missing: string[];
+  toAdd: string[];
+  improvements: string[];
+  /** Готовый текст сообщения для Telegram (HTML допустим). */
+  summaryText: string;
+  metadata: Record<string, unknown>;
+}
+
 export interface AIEngine {
   /** Проанализировать запись дневника и предложить рекомендации. */
   analyzeDiary(input: DiaryAnalysisInput): Promise<DiaryAnalysisResult>;
@@ -63,4 +82,7 @@ export interface AIEngine {
     proposal: RecommendationProposal,
     context: ClientContext,
   ): Promise<string>;
+
+  /** Сгенерировать ежедневную вечернюю сводку по всем записям дня (ФТ-24). */
+  generateEveningSummary(input: EveningSummaryInput): Promise<EveningSummaryResult>;
 }

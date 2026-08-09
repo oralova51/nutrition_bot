@@ -9,6 +9,7 @@ vi.mock('@nutrition-bot/shared', () => ({
   Feedback: { findOne: vi.fn() },
   Message: { create: vi.fn() },
   sendTelegramMessage: vi.fn(),
+  createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn(), debug: vi.fn() }),
 }));
 
 import { Feedback, Message, sendTelegramMessage } from '@nutrition-bot/shared';
@@ -98,23 +99,13 @@ describe('handleFeedbackComment', () => {
     expect(feedback.update).not.toHaveBeenCalled();
   });
 
-  it('does not consume text for high rating', async () => {
-    const feedback: FakeFeedback = {
-      id: 'feedback-1',
-      clientId: 'client-1',
-      rating: 5,
-      comment: null,
-      update: vi.fn(),
-    };
-    mockedFindOne.mockResolvedValue(
-      feedback as unknown as Awaited<ReturnType<typeof mockedFindOne>>,
-    );
-
+  it('returns false when feedback lookup fails so diary can continue', async () => {
+    mockedFindOne.mockRejectedValue(new Error('relation "feedbacks" does not exist'));
     const ctx = createMockContext({
       client: { id: 'client-1', telegramId: '123' } as unknown as BotContext['client'],
     });
 
-    const result = await handleFeedbackComment(ctx, 'диетический текст');
+    const result = await handleFeedbackComment(ctx, 'кофе, пять конфет, блины с сыром');
     expect(result).toBe(false);
   });
 });

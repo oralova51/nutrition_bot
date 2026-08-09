@@ -12,6 +12,7 @@
 - [x] Этап 2 — Telegram-бот минимальный (webhook/polling, /start, deep link)
 - [x] Этап 3 — Подключение клиента (3A ссылки — код и admin API полностью реализованы и проверены (3.1–3.6); 3B онбординг+анкета — welcome и анкета 3.9–3.15 реализованы; 3C настройки уведомлений — 3.16–3.24 реализованы)
 - [x] Этап 4 — Ежедневное взаимодействие (планировщик/напоминания, дневник питания, вечернее напоминание)
+- [x] Этап 4D — Ежедневный evening summary (ФТ-24): job 21:00, Report.type=daily, Message.evening_summary
 - [x] Этап 5 — AI и рекомендации (абстракция AIEngine, анализ, генерация в мягком тоне, лимиты, rate limit; 5.11 OCR/vision отложён по решению)
 - [x] Этап 6 — Неактивность и opt-out (ФТ-9..ФТ-12)
 - [x] Этап 7 — Завершение курса (Report, Feedback, ветки оценок)
@@ -231,6 +232,28 @@ Job в 20:00 (с учётом TZ клиента)
 4.19 [x]
 Не более 1 вечернего напоминания в день
 > Проверка по `Message` с `type = 'evening_reminder'` за текущий день в часовом поясе клиента. Добавлен новый тип `evening_reminder` в модель `Message` и миграция.
+4D. Ежедневный evening summary (ФТ-24)
+#	Шаг
+4.20 [x]
+Спецификация ФТ-24 + SA (`evening-summary.md`, обновления ERD/Domain/CJM/SA_SUMMARY)
+ФТ-24
+> Спека: `SA/evening-summary.md`, ФТ в `Functional_Requirements.md`, выжимка в `SA_SUMMARY.md`.
+4.21 [x]
+Миграции: Message.type `evening_summary`, Report.type `daily`, NotificationType `evening_summary` (+ бэкфилл enabledTypes)
+ФТ-24
+> Миграция `migrations/20260809140000-add-evening-summary.ts`; модели Message/Report/NotificationSettings обновлены.
+4.22 [x]
+AIEngine.generateEveningSummary + mock/openai + промпт дневной сводки
+ФТ-24
+> `packages/ai/src/{types,prompts,mock-engine,openai-compatible-engine,evening-summary}.ts`.
+4.23 [x]
+Job `evening-summary` в 21:00 TZ: выборка клиентов, анализ дневных записей, Report+Message, дедуп 1/день
+ФТ-24
+> `packages/scheduler/src/jobs/evening-summary-job.ts`, cron в `index.ts`.
+4.24 [x]
+HTTP force-endpoint + Postman (`scheduler-jobs`) + toggle в `/settings`
+ФТ-24
+> `POST /internal/jobs/evening-summary`; Postman: `postman/scheduler-jobs.postman_collection.json` + daily reports в `stage9-dashboards`; тип «Вечерняя сводка» в `/settings`.
 Этап 5. AI и рекомендации (Фаза 3 SA)
 #	Шаг	Связь с ФТ
 5.1 [x]
@@ -252,10 +275,10 @@ nonFR §1
 Лимит: макс. 2–3 рекомендации в день
 ФТ-7
 5.7 [x]
-Немедленная отправка при priority=critical
+Немедленная отправка рекомендаций после записи дневника (быстрая обратная связь; ранее — только critical)
 ФТ-6
 5.8 [x]
-Отложенная отправка (конец дня) для medium/low
+Вечерняя досылка medium/low, если ещё не ушли в Telegram (страховка к 5.7)
 ФТ-6
 5.9 [x]
 Генерация текста в мягком тоне (system prompt + few-shot из ФТ-7)

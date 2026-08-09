@@ -157,7 +157,7 @@ erDiagram
         uuid clientId FK "unique 1:1"
         string reminderTime "HH:mm"
         string frequency "daily|every_other_day|three_per_week|custom_days"
-        string enabledTypes "diary|recommendations|weekly_report (набор)"
+        string enabledTypes "diary|recommendations|weekly_report|evening_summary (набор)"
         string timezone "IANA, default Europe/Moscow"
         boolean enabled
         string disabledReason "nullable: user_request|inactivity"
@@ -192,7 +192,7 @@ erDiagram
         uuid id PK
         uuid clientId FK
         uuid recommendationId FK "nullable"
-        string type "recommendation|reminder|questionnaire_reminder|report|info"
+        string type "recommendation|reminder|questionnaire_reminder|evening_reminder|evening_summary|report|info|…"
         string category "transactional|optional"
         text content
         string channel "telegram|whatsapp|max"
@@ -238,7 +238,7 @@ erDiagram
         uuid clientId FK "denorm"
         date periodStart
         date periodEnd
-        string type "weekly|monthly|final"
+        string type "daily|weekly|monthly|final"
         json diaryStats "avg calories, БЖУ"
         int adherencePercent
         json problemAreas

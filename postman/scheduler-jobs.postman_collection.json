@@ -1,0 +1,236 @@
+{
+  "info": {
+    "name": "Scheduler — ручной запуск job'ов",
+    "description": "Принудительный запуск напоминаний и evening summary без ожидания слота времени (force=true).\n\nПеред тестом:\n1) `npm run dev:scheduler` (порт 3002)\n2) Variables → adminToken = ADMIN_API_TOKEN из .env (без слова Bearer)\n3) Auth коллекции: Bearer Token → {{adminToken}} (все POST наследуют его)\n\nЕсли daily-reminder даёт 200, а evening-summary 401 — в Postman у конкретного запроса отключён/переопределён Authorization. Проще: Duplicate daily-reminder и поменяй path на evening-summary.\n\nФТ-24: SA/evening-summary.md",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{adminToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "schedulerUrl",
+      "value": "http://localhost:3002",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string",
+      "description": "ADMIN_API_TOKEN из .env без префикса Bearer. Тот же, что для admin API."
+    },
+    {
+      "key": "clientId",
+      "value": "608d96f6-fdd4-48cd-a44d-dfff89dde7c0",
+      "type": "string",
+      "description": "UUID тестового клиента"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health check",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": "{{schedulerUrl}}/health",
+        "description": "Без авторизации. Ожидаем {\"service\":\"scheduler\"}."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Service is scheduler', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.service).to.eql('scheduler');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Daily reminder (force, все подходящие клиенты)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"force\": true\n}"
+        },
+        "url": "{{schedulerUrl}}/internal/jobs/daily-reminder",
+        "description": "Сразу отправляет ежедневное напоминание. Auth — Bearer из коллекции."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Job result has counters', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.job).to.eql('daily-reminder');",
+              "  pm.expect(json.force).to.eql(true);",
+              "  pm.expect(json).to.have.property('sent');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Daily reminder (force, один clientId)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"force\": true,\n  \"clientId\": \"{{clientId}}\"\n}"
+        },
+        "url": "{{schedulerUrl}}/internal/jobs/daily-reminder",
+        "description": "Только одному клиенту."
+      }
+    },
+    {
+      "name": "Evening reminder (force, все подходящие клиенты)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"force\": true\n}"
+        },
+        "url": "{{schedulerUrl}}/internal/jobs/evening-reminder",
+        "description": "Вечернее напоминание. При force игнорирует 20:00 и дедуп."
+      }
+    },
+    {
+      "name": "Evening reminder (force, один clientId)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"force\": true,\n  \"clientId\": \"{{clientId}}\"\n}"
+        },
+        "url": "{{schedulerUrl}}/internal/jobs/evening-reminder",
+        "description": "Вечернее напоминание одному клиенту."
+      }
+    },
+    {
+      "name": "Evening summary (force, все подходящие клиенты)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"force\": true\n}"
+        },
+        "url": "{{schedulerUrl}}/internal/jobs/evening-summary",
+        "description": "ФТ-24: вечерняя сводка. Auth наследуется от коллекции (Bearer {{adminToken}}). Нужна ≥1 filled-запись за сегодня."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Job result has counters', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.job).to.eql('evening-summary');",
+              "  pm.expect(json.force).to.eql(true);",
+              "  pm.expect(json).to.have.property('sent');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Evening summary (force, один clientId)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"force\": true,\n  \"clientId\": \"{{clientId}}\"\n}"
+        },
+        "url": "{{schedulerUrl}}/internal/jobs/evening-summary",
+        "description": "Вечерняя сводка одному клиенту. После успеха: GET specialist reports?type=daily"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Job is evening-summary', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.job).to.eql('evening-summary');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

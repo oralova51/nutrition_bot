@@ -565,7 +565,7 @@ clientId,displayName,enrollmentStatus,onboardingStatus,notificationsEnabled,link
 
 | Параметр | Описание |
 |----------|----------|
-| `type` | `weekly`, `monthly`, `final` |
+| `type` | `daily`, `weekly`, `monthly`, `final` |
 | `page`, `limit` | Пагинация |
 
 **Пример ответа:**

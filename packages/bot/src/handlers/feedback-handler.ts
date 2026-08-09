@@ -3,9 +3,11 @@
 
 import type { CallbackQueryContext } from 'grammy';
 import { InlineKeyboard } from 'grammy';
-import { Feedback, Message, sendTelegramMessage } from '@nutrition-bot/shared';
+import { createLogger, Feedback, Message, sendTelegramMessage } from '@nutrition-bot/shared';
 import type { BotContext } from '../context.js';
 import { resolveReviewUrls } from '../config.js';
+
+const logger = createLogger('bot');
 
 const REVIEW_URLS = resolveReviewUrls();
 
@@ -222,23 +224,32 @@ export async function handleFeedbackCallback(ctx: CallbackQueryContext<BotContex
 /**
  * Сохраняет текстовый комментарий к последнему курсовому feedback (1–3 звезды).
  * Вызывается из общего текстового обработчика, когда клиент пишет после запроса комментария.
+ * При ошибке БД/отправки возвращает false, чтобы не блокировать приём дневника питания.
  */
 export async function handleFeedbackComment(ctx: BotContext, text: string): Promise<boolean> {
   if (!ctx.client) return false;
 
-  const feedback = await findLastCourseFeedback(ctx.client.id);
-  if (!feedback || feedback.rating > 3 || feedback.comment !== null) {
+  try {
+    const feedback = await findLastCourseFeedback(ctx.client.id);
+    if (!feedback || feedback.rating > 3 || feedback.comment !== null) {
+      return false;
+    }
+
+    await feedback.update({ comment: text });
+    await sendTelegramMessage({
+      telegramId: ctx.client.telegramId!,
+      text: COMMENT_SAVED_MESSAGE,
+      clientId: ctx.client.id,
+      type: 'feedback',
+      category: 'transactional',
+    });
+    await notifyAdminLowRating(feedback);
+    return true;
+  } catch (err) {
+    logger.error(
+      { err, clientId: ctx.client.id },
+      'Ошибка проверки/сохранения комментария feedback — продолжаем как запись дневника',
+    );
     return false;
   }
-
-  await feedback.update({ comment: text });
-  await sendTelegramMessage({
-    telegramId: ctx.client.telegramId!,
-    text: COMMENT_SAVED_MESSAGE,
-    clientId: ctx.client.id,
-    type: 'feedback',
-    category: 'transactional',
-  });
-  await notifyAdminLowRating(feedback);
-  return true;
 }

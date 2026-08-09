@@ -10,13 +10,17 @@ import type {
   ClientContext,
   DiaryAnalysisInput,
   DiaryAnalysisResult,
+  EveningSummaryInput,
+  EveningSummaryResult,
   RecommendationProposal,
 } from './types.js';
 import type { AIConfig } from './config.js';
 import {
   ANALYSIS_SYSTEM_PROMPT,
   buildDiaryAnalysisUserPrompt,
+  buildEveningSummaryUserPrompt,
   buildRecommendationUserPrompt,
+  EVENING_SUMMARY_SYSTEM_PROMPT,
   RECOMMENDATION_SYSTEM_PROMPT,
 } from './prompts.js';
 import { logger } from './logger.js';
@@ -156,6 +160,98 @@ export class OpenAICompatibleAIEngine implements AIEngine {
     return text;
   }
 
+  async generateEveningSummary(input: EveningSummaryInput): Promise<EveningSummaryResult> {
+    const entriesSummary = input.dayEntries
+      .map((entry, index) => {
+        const calories =
+          entry.approxCalories !== null ? `, ~${entry.approxCalories} ккал` : '';
+        const photo = entry.hasPhoto ? ', есть фото' : '';
+        return `${index + 1}. ${entry.description ?? '(без описания)'}${calories}${photo}`;
+      })
+      .join('\n');
+
+    const userPrompt = buildEveningSummaryUserPrompt(
+      input.localDate,
+      entriesSummary,
+      input.clientContext,
+    );
+
+    logger.debug(
+      { model: this.config.model, localDate: input.localDate, entries: input.dayEntries.length },
+      'Запрос к AI: вечерняя сводка',
+    );
+
+    await this.rateLimiter.acquire();
+
+    let response;
+    try {
+      response = await this.client.chat.completions.create({
+        model: this.config.model,
+        messages: [
+          { role: 'system', content: EVENING_SUMMARY_SYSTEM_PROMPT },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: Math.max(this.config.maxTokens, 800),
+        temperature: this.config.temperature,
+        response_format: { type: 'json_object' },
+      });
+    } catch (err) {
+      logger.error(
+        { err, model: this.config.model, localDate: input.localDate },
+        'Ошибка при вызове AI: вечерняя сводка',
+      );
+      throw err;
+    }
+
+    const rawContent = response.choices[0]?.message?.content ?? '';
+    let parsed: Partial<EveningSummaryResult>;
+    try {
+      parsed = JSON.parse(rawContent) as Partial<EveningSummaryResult>;
+    } catch {
+      logger.warn(
+        { rawContent, model: this.config.model, localDate: input.localDate },
+        'AI вернул некорректный JSON при вечерней сводке',
+      );
+      parsed = {};
+    }
+
+    const enough = Array.isArray(parsed.enough) ? parsed.enough.map(String) : [];
+    const missing = Array.isArray(parsed.missing) ? parsed.missing.map(String) : [];
+    const toAdd = Array.isArray(parsed.toAdd) ? parsed.toAdd.map(String) : [];
+    const improvements = Array.isArray(parsed.improvements)
+      ? parsed.improvements.map(String)
+      : [];
+    const summaryText =
+      typeof parsed.summaryText === 'string' && parsed.summaryText.trim().length > 0
+        ? parsed.summaryText.trim()
+        : buildFallbackEveningSummaryText(input.localDate, enough, missing, toAdd, improvements);
+
+    logger.info(
+      {
+        model: this.config.model,
+        localDate: input.localDate,
+        entries: input.dayEntries.length,
+        usage: response.usage,
+      },
+      'AI: вечерняя сводка завершена',
+    );
+
+    return {
+      enough,
+      missing,
+      toAdd,
+      improvements,
+      summaryText,
+      metadata: {
+        engine: 'openai-compatible',
+        model: this.config.model,
+        baseURL: this.config.baseURL,
+        usage: response.usage,
+        finishReason: response.choices[0]?.finish_reason,
+      },
+    };
+  }
+
   private buildHistorySummary(input: DiaryAnalysisInput): string {
     const today = new Date();
     const dayEntries = input.history.filter((entry) => {
@@ -180,4 +276,28 @@ export class OpenAICompatibleAIEngine implements AIEngine {
     }
     return `Записей за предыдущий курс: ${input.previousHistory.length}. Последняя запись: ${input.previousHistory[0]?.description ?? '(без описания)'}.`;
   }
+}
+
+function buildFallbackEveningSummaryText(
+  localDate: string,
+  enough: string[],
+  missing: string[],
+  toAdd: string[],
+  improvements: string[],
+): string {
+  const lines = [`<b>Вечерняя сводка за ${localDate}</b>`, ''];
+  if (enough.length > 0) {
+    lines.push('<b>Что хватало</b>', ...enough.map((item) => `• ${item}`), '');
+  }
+  if (missing.length > 0) {
+    lines.push('<b>Чего не хватало</b>', ...missing.map((item) => `• ${item}`), '');
+  }
+  if (toAdd.length > 0) {
+    lines.push('<b>Можно добавить</b>', ...toAdd.map((item) => `• ${item}`), '');
+  }
+  if (improvements.length > 0) {
+    lines.push('<b>Можно улучшить</b>', ...improvements.map((item) => `• ${item}`), '');
+  }
+  lines.push('Спасибо, что делишься питанием — до завтра!');
+  return lines.join('\n');
 }

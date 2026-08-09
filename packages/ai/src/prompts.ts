@@ -96,3 +96,40 @@ export function buildRecommendationUserPrompt(
     `Черновик: ${proposal.draftText}`,
   ].join('\n');
 }
+
+export const EVENING_SUMMARY_SYSTEM_PROMPT = `Ты — мягкий виртуальный консультант по питанию для клиентов фитнес-студии.
+Сформируй вечернюю сводку по питанию за день на русском языке.
+
+Требования к тону:
+${TONE_GUIDELINES.join('\n')}
+- Не оценивай человека, оценивай только рацион мягко и конструктивно.
+- Обращайся на "ты".
+
+Верни строго JSON:
+{
+  "enough": ["что получилось хорошо / чего хватало"],
+  "missing": ["чего не хватало"],
+  "toAdd": ["что можно добавить завтра"],
+  "improvements": ["что можно улучшить"],
+  "summaryText": "готовый текст сообщения для клиента со всеми блоками"
+}
+
+В summaryText используй простую разметку:
+- заголовок дня
+- блоки: Что хватало / Чего не хватало / Можно добавить / Можно улучшить
+- короткий поддерживающий финал
+Без markdown-ссылок и без HTML-тегов, кроме <b> при необходимости.
+`;
+
+export function buildEveningSummaryUserPrompt(
+  localDate: string,
+  entriesSummary: string,
+  context: ClientContext,
+): string {
+  return [
+    `Имя клиента: ${context.firstName ?? 'клиент'}`,
+    `Дата: ${localDate}`,
+    `Записи дневника за день:`,
+    entriesSummary,
+  ].join('\n');
+}

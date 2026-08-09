@@ -10,8 +10,11 @@ import { randomUUID } from 'node:crypto';
 import type {
   AIEngine,
   AnalysisCriterion,
+  ClientContext,
   DiaryAnalysisInput,
   DiaryAnalysisResult,
+  EveningSummaryInput,
+  EveningSummaryResult,
   RecommendationPriority,
   RecommendationProposal,
   RecommendationType,
@@ -39,8 +42,6 @@ const CRITERIA_CONFIG: Record<
     keywords: [
       'торт',
       'пирожное',
-      'конфета',
-      'шоколад',
       'фастфуд',
       'бургер',
       'пицца',
@@ -61,6 +62,7 @@ const CRITERIA_CONFIG: Record<
       'яйцо',
       'яйца',
       'творог',
+      'сыр',
       'мясо',
       'индейка',
       'бобов',
@@ -122,9 +124,13 @@ const CRITERIA_CONFIG: Record<
       'картошка',
       'пирог',
       'блины',
+      'блин',
       'варенье',
       'мед',
       'сахар',
+      // «конфет» ловит конфета/конфеты/конфет/конфету
+      'конфет',
+      'шоколад',
     ],
     type: 'product',
     priority: 'medium',
@@ -133,6 +139,18 @@ const CRITERIA_CONFIG: Record<
       'Простые углеводы дают быструю энергию, но быстро уходят. Попробуй заменить часть на цельнозерновые или добавить белок и овощи.',
   },
 };
+
+const EXCESS_CRITERIA: AnalysisCriterion[] = [
+  'sugar_fat_excess',
+  'snacking_overeating',
+  'simple_carbs_excess',
+];
+
+const DEFICIT_CRITERIA: AnalysisCriterion[] = [
+  'water',
+  'protein_deficit',
+  'vegetables_fiber_deficit',
+];
 
 function buildHistorySummary(input: DiaryAnalysisInput): string {
   const today = new Date();
@@ -152,39 +170,51 @@ function buildHistorySummary(input: DiaryAnalysisInput): string {
   ].join('\n');
 }
 
-function detectCriteria(description: string | null): AnalysisCriterion[] {
-  if (!description) return [];
+function hasKeyword(description: string, keywords: string[]): boolean {
   const lower = description.toLowerCase();
-  const found: AnalysisCriterion[] = [];
-
-  for (const [criterion, config] of Object.entries(CRITERIA_CONFIG)) {
-    if (config.keywords.some((keyword) => lower.includes(keyword))) {
-      found.push(criterion as AnalysisCriterion);
-    }
-  }
-
-  return found;
+  return keywords.some((keyword) => lower.includes(keyword));
 }
 
-function invertCriteriaIfNeeded(
+/**
+ * Excess-критерии срабатывают при наличии ключевых слов.
+ * Deficit-критерии — когда маркеров в тексте нет (и только если нет excess-находок).
+ */
+function detectCriteria(description: string | null): AnalysisCriterion[] {
+  if (!description?.trim()) return [];
+
+  const excessFound = EXCESS_CRITERIA.filter((criterion) =>
+    hasKeyword(description, CRITERIA_CONFIG[criterion].keywords),
+  );
+  if (excessFound.length > 0) {
+    return excessFound;
+  }
+
+  return DEFICIT_CRITERIA.filter(
+    (criterion) => !hasKeyword(description, CRITERIA_CONFIG[criterion].keywords),
+  );
+}
+
+function resolveCriteria(
   detected: AnalysisCriterion[],
   entry: DiaryAnalysisInput['entry'],
 ): AnalysisCriterion[] {
-  // Если описание короткое и нет ключевых слов, но есть фото — не пытаемся угадать.
+  // Если есть только фото без подписи — не угадываем.
   if (entry.hasPhoto && !entry.description) return [];
 
-  // Если ничего не найдено, но описание есть — предполагаем дефицит воды и овощей как мягкое напоминание.
-  if (detected.length === 0 && entry.description) {
+  if (detected.length > 0) return detected;
+
+  // Мягкий fallback, если текст есть, но эвристика ничего не нашла.
+  if (entry.description?.trim()) {
     return ['water', 'vegetables_fiber_deficit'];
   }
 
-  return detected;
+  return [];
 }
 
 export class MockAIEngine implements AIEngine {
   analyzeDiary(input: DiaryAnalysisInput): Promise<DiaryAnalysisResult> {
     const detected = detectCriteria(input.entry.description);
-    const criteria = invertCriteriaIfNeeded(detected, input.entry);
+    const criteria = resolveCriteria(detected, input.entry);
     const historySummary = buildHistorySummary(input);
 
     const proposals: RecommendationProposal[] = criteria.map((criterion) => {
@@ -209,8 +239,97 @@ export class MockAIEngine implements AIEngine {
     });
   }
 
-  generateRecommendationText(proposal: RecommendationProposal): Promise<string> {
+  generateRecommendationText(
+    proposal: RecommendationProposal,
+    _context: ClientContext,
+  ): Promise<string> {
+    void _context;
     // В mock-режиме просто возвращаем черновик, без обращения к AI.
     return Promise.resolve(proposal.draftText);
+  }
+
+  generateEveningSummary(input: EveningSummaryInput): Promise<EveningSummaryResult> {
+    const descriptions = input.dayEntries
+      .map((entry) => (entry.description ?? '').toLowerCase())
+      .filter(Boolean);
+    const joined = descriptions.join(' | ');
+
+    const hasProtein = CRITERIA_CONFIG.protein_deficit.keywords.some((k) => joined.includes(k));
+    const hasVeggies = CRITERIA_CONFIG.vegetables_fiber_deficit.keywords.some((k) =>
+      joined.includes(k),
+    );
+    const hasWater = CRITERIA_CONFIG.water.keywords.some((k) => joined.includes(k));
+    const hasSugar = CRITERIA_CONFIG.sugar_fat_excess.keywords.some((k) => joined.includes(k));
+    const hasSimpleCarbs = CRITERIA_CONFIG.simple_carbs_excess.keywords.some((k) =>
+      joined.includes(k),
+    );
+
+    const enough: string[] = [
+      `Ты сделал(а) ${input.dayEntries.length} запис(и/ей) о питании — это уже отличная привычка.`,
+    ];
+    if (hasProtein) enough.push('В рационе сегодня был белок — это поддерживает сытость.');
+    if (hasVeggies) enough.push('Овощи/клетчатка сегодня тоже были — супер.');
+
+    const missing: string[] = [];
+    if (!hasWater) missing.push('Похоже, воды сегодня почти не отмечалось.');
+    if (!hasProtein) missing.push('Источников белка за день почти не видно.');
+    if (!hasVeggies) missing.push('Овощей и клетчатки сегодня мало.');
+
+    const toAdd: string[] = [];
+    if (!hasWater) toAdd.push('Добавь 1–2 стакана воды к основным приёмам пищи.');
+    if (!hasProtein) toAdd.push('Добавь яйцо, творог, курицу или рыбу хотя бы к одному приёму.');
+    if (!hasVeggies) toAdd.push('Добавь небольшой салат или свежие овощи к обеду/ужину.');
+    if (toAdd.length === 0) toAdd.push('Продолжай в том же духе и сохрани разнообразие завтра.');
+
+    const improvements: string[] = [];
+    if (hasSugar) {
+      improvements.push(
+        'Если тянет на сладкое/жирное — можно чуть уменьшить порцию и добавить белок рядом.',
+      );
+    }
+    if (hasSimpleCarbs) {
+      improvements.push(
+        'Часть простых углеводов можно заменить на более «длинные» (цельнозерновые) или дополнить овощами.',
+      );
+    }
+    if (improvements.length === 0) {
+      improvements.push('Завтра можно чуть равномернее распределить приёмы пищи в течение дня.');
+    }
+
+    const name = input.clientContext.firstName ?? 'друг';
+    const summaryText = [
+      `<b>Вечерняя сводка за ${input.localDate}</b>`,
+      '',
+      `Привет, ${name}! Вот мягкий взгляд на твой день:`,
+      '',
+      '<b>Что хватало</b>',
+      ...enough.map((item) => `• ${item}`),
+      '',
+      '<b>Чего не хватало</b>',
+      ...(missing.length > 0 ? missing : ['Явных дефицитов не видно — хороший день!']).map(
+        (item) => `• ${item}`,
+      ),
+      '',
+      '<b>Можно добавить</b>',
+      ...toAdd.map((item) => `• ${item}`),
+      '',
+      '<b>Можно улучшить</b>',
+      ...improvements.map((item) => `• ${item}`),
+      '',
+      'Спасибо, что делишься питанием — маленькие шаги складываются в привычку. 💚',
+    ].join('\n');
+
+    return Promise.resolve({
+      enough,
+      missing,
+      toAdd,
+      improvements,
+      summaryText,
+      metadata: {
+        engine: 'mock',
+        entriesCount: input.dayEntries.length,
+        localDate: input.localDate,
+      },
+    });
   }
 }

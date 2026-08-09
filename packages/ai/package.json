@@ -2,7 +2,7 @@
   "name": "@nutrition-bot/ai",
   "version": "0.1.0",
   "private": true,
-  "description": "AI Engine: анализ дневника питания и генерация рекомендаций",
+  "description": "AI Engine: анализ дневника, рекомендации и ежедневная вечерняя сводка",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

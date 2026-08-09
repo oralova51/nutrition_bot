@@ -658,6 +658,11 @@ Admin API **не вызывает** Telegram напрямую. Ниже — ме
 7. `GET /admin/clients/:id` — проверить `telegramId`
 8. `POST /admin/enrollments/:id/link/regenerate` — после истечения
 
+Дополнительно для ФТ-24 (вечерняя сводка): коллекция `postman/scheduler-jobs.postman_collection.json` —
+`POST {{schedulerUrl}}/internal/jobs/evening-summary` с `{ "force": true, "clientId": "..." }`;
+проверка отчёта — `GET /specialist/clients/:id/reports?type=daily` (`postman/stage9-dashboards.postman_collection.json`).
+Детали: `SA/evening-summary.md`.
+
 ---
 
 ## 9. Связь с функциональными требованиями
@@ -668,6 +673,7 @@ Admin API **не вызывает** Telegram напрямую. Ниже — ме
 | ФТ-19 | `GET /admin/clients`, фильтры, `GET .../expired-links` |
 | ФТ-2 | поле `onboarding` в ответах clients |
 | ФТ-10 | `status=inactive`, `disabledReason=inactivity` |
+| ФТ-24 | Scheduler: `POST /internal/jobs/evening-summary`; Specialist: `GET .../reports?type=daily` |
 | CJM (alt) | `GET /admin/enrollments/expired-links` |
 
 ---
