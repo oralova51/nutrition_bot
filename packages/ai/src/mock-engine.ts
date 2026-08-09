@@ -19,6 +19,7 @@ import type {
   RecommendationProposal,
   RecommendationType,
 } from './types.js';
+import { buildHeuristicEveningSummary } from './evening-summary-heuristic.js';
 
 const CRITERIA_CONFIG: Record<
   AnalysisCriterion,
@@ -249,86 +250,16 @@ export class MockAIEngine implements AIEngine {
   }
 
   generateEveningSummary(input: EveningSummaryInput): Promise<EveningSummaryResult> {
-    const descriptions = input.dayEntries
-      .map((entry) => (entry.description ?? '').toLowerCase())
-      .filter(Boolean);
-    const joined = descriptions.join(' | ');
-
-    const hasProtein = CRITERIA_CONFIG.protein_deficit.keywords.some((k) => joined.includes(k));
-    const hasVeggies = CRITERIA_CONFIG.vegetables_fiber_deficit.keywords.some((k) =>
-      joined.includes(k),
+    const result = buildHeuristicEveningSummary(
+      input.dayEntries,
+      input.localDate,
+      input.clientContext,
     );
-    const hasWater = CRITERIA_CONFIG.water.keywords.some((k) => joined.includes(k));
-    const hasSugar = CRITERIA_CONFIG.sugar_fat_excess.keywords.some((k) => joined.includes(k));
-    const hasSimpleCarbs = CRITERIA_CONFIG.simple_carbs_excess.keywords.some((k) =>
-      joined.includes(k),
-    );
-
-    const enough: string[] = [
-      `Ты сделал(а) ${input.dayEntries.length} запис(и/ей) о питании — это уже отличная привычка.`,
-    ];
-    if (hasProtein) enough.push('В рационе сегодня был белок — это поддерживает сытость.');
-    if (hasVeggies) enough.push('Овощи/клетчатка сегодня тоже были — супер.');
-
-    const missing: string[] = [];
-    if (!hasWater) missing.push('Похоже, воды сегодня почти не отмечалось.');
-    if (!hasProtein) missing.push('Источников белка за день почти не видно.');
-    if (!hasVeggies) missing.push('Овощей и клетчатки сегодня мало.');
-
-    const toAdd: string[] = [];
-    if (!hasWater) toAdd.push('Добавь 1–2 стакана воды к основным приёмам пищи.');
-    if (!hasProtein) toAdd.push('Добавь яйцо, творог, курицу или рыбу хотя бы к одному приёму.');
-    if (!hasVeggies) toAdd.push('Добавь небольшой салат или свежие овощи к обеду/ужину.');
-    if (toAdd.length === 0) toAdd.push('Продолжай в том же духе и сохрани разнообразие завтра.');
-
-    const improvements: string[] = [];
-    if (hasSugar) {
-      improvements.push(
-        'Если тянет на сладкое/жирное — можно чуть уменьшить порцию и добавить белок рядом.',
-      );
-    }
-    if (hasSimpleCarbs) {
-      improvements.push(
-        'Часть простых углеводов можно заменить на более «длинные» (цельнозерновые) или дополнить овощами.',
-      );
-    }
-    if (improvements.length === 0) {
-      improvements.push('Завтра можно чуть равномернее распределить приёмы пищи в течение дня.');
-    }
-
-    const name = input.clientContext.firstName ?? 'друг';
-    const summaryText = [
-      `<b>Вечерняя сводка за ${input.localDate}</b>`,
-      '',
-      `Привет, ${name}! Вот мягкий взгляд на твой день:`,
-      '',
-      '<b>Что хватало</b>',
-      ...enough.map((item) => `• ${item}`),
-      '',
-      '<b>Чего не хватало</b>',
-      ...(missing.length > 0 ? missing : ['Явных дефицитов не видно — хороший день!']).map(
-        (item) => `• ${item}`,
-      ),
-      '',
-      '<b>Можно добавить</b>',
-      ...toAdd.map((item) => `• ${item}`),
-      '',
-      '<b>Можно улучшить</b>',
-      ...improvements.map((item) => `• ${item}`),
-      '',
-      'Спасибо, что делишься питанием — маленькие шаги складываются в привычку. 💚',
-    ].join('\n');
-
     return Promise.resolve({
-      enough,
-      missing,
-      toAdd,
-      improvements,
-      summaryText,
+      ...result,
       metadata: {
+        ...result.metadata,
         engine: 'mock',
-        entriesCount: input.dayEntries.length,
-        localDate: input.localDate,
       },
     });
   }

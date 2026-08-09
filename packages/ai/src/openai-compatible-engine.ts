@@ -23,6 +23,10 @@ import {
   EVENING_SUMMARY_SYSTEM_PROMPT,
   RECOMMENDATION_SYSTEM_PROMPT,
 } from './prompts.js';
+import {
+  buildHeuristicEveningSummary,
+  composeEveningSummaryText,
+} from './evening-summary-heuristic.js';
 import { logger } from './logger.js';
 import { RateLimiter } from './rate-limiter.js';
 
@@ -176,8 +180,15 @@ export class OpenAICompatibleAIEngine implements AIEngine {
       input.clientContext,
     );
 
+    const maxTokens = Math.max(this.config.eveningSummaryMaxTokens, this.config.maxTokens, 2048);
+
     logger.debug(
-      { model: this.config.model, localDate: input.localDate, entries: input.dayEntries.length },
+      {
+        model: this.config.model,
+        localDate: input.localDate,
+        entries: input.dayEntries.length,
+        maxTokens,
+      },
       'Запрос к AI: вечерняя сводка',
     );
 
@@ -185,34 +196,92 @@ export class OpenAICompatibleAIEngine implements AIEngine {
 
     let response;
     try {
+      // thinking: disabled — у DeepSeek V4 reasoning иначе съедает почти весь max_tokens,
+      // и JSON-сводка обрезается (finish_reason=length).
       response = await this.client.chat.completions.create({
         model: this.config.model,
         messages: [
           { role: 'system', content: EVENING_SUMMARY_SYSTEM_PROMPT },
           { role: 'user', content: userPrompt },
         ],
-        max_tokens: Math.max(this.config.maxTokens, 800),
+        max_tokens: maxTokens,
         temperature: this.config.temperature,
         response_format: { type: 'json_object' },
-      });
-    } catch (err) {
-      logger.error(
-        { err, model: this.config.model, localDate: input.localDate },
-        'Ошибка при вызове AI: вечерняя сводка',
+        thinking: { type: 'disabled' },
+      } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
+    } catch (firstErr) {
+      logger.warn(
+        { err: firstErr, model: this.config.model, localDate: input.localDate },
+        'Вечерняя сводка: запрос с thinking=disabled не прошёл, повторяю без него',
       );
-      throw err;
+      try {
+        response = await this.client.chat.completions.create({
+          model: this.config.model,
+          messages: [
+            { role: 'system', content: EVENING_SUMMARY_SYSTEM_PROMPT },
+            { role: 'user', content: userPrompt },
+          ],
+          max_tokens: maxTokens,
+          temperature: this.config.temperature,
+          response_format: { type: 'json_object' },
+        });
+      } catch (err) {
+        logger.error(
+          { err, model: this.config.model, localDate: input.localDate },
+          'Ошибка при вызове AI: вечерняя сводка',
+        );
+        throw err;
+      }
     }
 
+    const finishReason = response.choices[0]?.finish_reason;
     const rawContent = response.choices[0]?.message?.content ?? '';
-    let parsed: Partial<EveningSummaryResult>;
+    let parsed: Partial<EveningSummaryResult> | null = null;
     try {
       parsed = JSON.parse(rawContent) as Partial<EveningSummaryResult>;
     } catch {
       logger.warn(
-        { rawContent, model: this.config.model, localDate: input.localDate },
+        {
+          rawContentPreview: rawContent.slice(0, 500),
+          model: this.config.model,
+          localDate: input.localDate,
+          finishReason,
+          usage: response.usage,
+        },
         'AI вернул некорректный JSON при вечерней сводке',
       );
-      parsed = {};
+    }
+
+    if (finishReason === 'length') {
+      logger.warn(
+        {
+          model: this.config.model,
+          localDate: input.localDate,
+          maxTokens,
+          usage: response.usage,
+        },
+        'Вечерняя сводка обрезана по max_tokens',
+      );
+    }
+
+    if (!parsed) {
+      const fallback = buildHeuristicEveningSummary(
+        input.dayEntries,
+        input.localDate,
+        input.clientContext,
+      );
+      return {
+        ...fallback,
+        metadata: {
+          ...fallback.metadata,
+          engine: 'openai-compatible-fallback',
+          model: this.config.model,
+          baseURL: this.config.baseURL,
+          usage: response.usage,
+          finishReason,
+          reason: 'invalid_json',
+        },
+      };
     }
 
     const enough = Array.isArray(parsed.enough) ? parsed.enough.map(String) : [];
@@ -221,17 +290,55 @@ export class OpenAICompatibleAIEngine implements AIEngine {
     const improvements = Array.isArray(parsed.improvements)
       ? parsed.improvements.map(String)
       : [];
-    const summaryText =
-      typeof parsed.summaryText === 'string' && parsed.summaryText.trim().length > 0
+
+    let summaryText =
+      typeof parsed.summaryText === 'string' && parsed.summaryText.trim().length > 40
         ? parsed.summaryText.trim()
-        : buildFallbackEveningSummaryText(input.localDate, enough, missing, toAdd, improvements);
+        : composeEveningSummaryText(
+            input.localDate,
+            enough,
+            missing,
+            toAdd,
+            improvements,
+            input.clientContext.firstName,
+          );
+
+    if (!summaryText) {
+      const fallback = buildHeuristicEveningSummary(
+        input.dayEntries,
+        input.localDate,
+        input.clientContext,
+      );
+      summaryText = fallback.summaryText;
+      logger.warn(
+        { localDate: input.localDate, model: this.config.model },
+        'AI-сводка пустая — использован эвристический fallback по записям дня',
+      );
+      return {
+        enough: enough.length > 0 ? enough : fallback.enough,
+        missing: missing.length > 0 ? missing : fallback.missing,
+        toAdd: toAdd.length > 0 ? toAdd : fallback.toAdd,
+        improvements: improvements.length > 0 ? improvements : fallback.improvements,
+        summaryText,
+        metadata: {
+          engine: 'openai-compatible-fallback',
+          model: this.config.model,
+          baseURL: this.config.baseURL,
+          usage: response.usage,
+          finishReason,
+          reason: 'empty_summary',
+        },
+      };
+    }
 
     logger.info(
       {
         model: this.config.model,
         localDate: input.localDate,
         entries: input.dayEntries.length,
+        summaryLength: summaryText.length,
         usage: response.usage,
+        finishReason,
       },
       'AI: вечерняя сводка завершена',
     );
@@ -247,7 +354,7 @@ export class OpenAICompatibleAIEngine implements AIEngine {
         model: this.config.model,
         baseURL: this.config.baseURL,
         usage: response.usage,
-        finishReason: response.choices[0]?.finish_reason,
+        finishReason,
       },
     };
   }
@@ -276,28 +383,4 @@ export class OpenAICompatibleAIEngine implements AIEngine {
     }
     return `Записей за предыдущий курс: ${input.previousHistory.length}. Последняя запись: ${input.previousHistory[0]?.description ?? '(без описания)'}.`;
   }
-}
-
-function buildFallbackEveningSummaryText(
-  localDate: string,
-  enough: string[],
-  missing: string[],
-  toAdd: string[],
-  improvements: string[],
-): string {
-  const lines = [`<b>Вечерняя сводка за ${localDate}</b>`, ''];
-  if (enough.length > 0) {
-    lines.push('<b>Что хватало</b>', ...enough.map((item) => `• ${item}`), '');
-  }
-  if (missing.length > 0) {
-    lines.push('<b>Чего не хватало</b>', ...missing.map((item) => `• ${item}`), '');
-  }
-  if (toAdd.length > 0) {
-    lines.push('<b>Можно добавить</b>', ...toAdd.map((item) => `• ${item}`), '');
-  }
-  if (improvements.length > 0) {
-    lines.push('<b>Можно улучшить</b>', ...improvements.map((item) => `• ${item}`), '');
-  }
-  lines.push('Спасибо, что делишься питанием — до завтра!');
-  return lines.join('\n');
 }
