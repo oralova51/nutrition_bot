@@ -14,6 +14,7 @@ import { Op } from 'sequelize';
 import {
   Client,
   ClientEnrollment,
+  DEFAULT_TIMEZONE,
   NutritionDiary,
   Questionnaire,
   Recommendation,
@@ -68,7 +69,7 @@ export async function processDiaryEntry(nutritionDiaryId: string): Promise<Proce
   const history = await loadHistoryForEnrollment(entry.clientEnrollmentId);
   const previousHistory = await loadPreviousEnrollmentHistory(client.id, entry.clientEnrollmentId);
   const questionnaire = await loadQuestionnaireForEnrollment(entry.clientEnrollmentId);
-  const timezone = await resolveClientTimezone(client.id);
+  const timezone = DEFAULT_TIMEZONE;
 
   const input: DiaryAnalysisInput = {
     entry,
@@ -188,13 +189,6 @@ async function countRecommendationsToday(clientId: string): Promise<number> {
       createdAt: { [Op.between]: [startOfDay, endOfDay] },
     },
   });
-}
-
-async function resolveClientTimezone(clientId: string): Promise<string> {
-  const settings = await import('@nutrition-bot/shared').then((m) =>
-    m.NotificationSettings.findOne({ where: { clientId } }),
-  );
-  return settings?.timezone ?? 'Europe/Moscow';
 }
 
 async function sendRecommendationMessage(

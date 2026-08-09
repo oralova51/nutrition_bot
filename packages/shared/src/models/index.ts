@@ -55,6 +55,7 @@ export {
 } from './nutrition-diary.js';
 export {
   NotificationSettings,
+  DEFAULT_TIMEZONE,
   DISABLED_REASONS,
   NOTIFICATION_FREQUENCIES,
   NOTIFICATION_TYPES,

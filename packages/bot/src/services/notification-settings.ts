@@ -1,7 +1,9 @@
 // Сервис настроек уведомлений: inline-клавиатуры, форматирование и работа с БД.
-// Реализует ФТ-3 (roadmap 3.16–3.24): время, частота, типы, часовой пояс, /settings.
+// Реализует ФТ-3 (roadmap 3.16–3.24): время, частота, типы, /settings.
+// Часовой пояс фиксирован: Europe/Kaliningrad (MVP, все клиенты студии).
 
 import {
+  DEFAULT_TIMEZONE,
   NotificationSettings,
   type NotificationFrequency,
   type NotificationType,
@@ -53,14 +55,6 @@ export const TYPE_LABELS: Record<NotificationType, string> = {
   weekly_report: 'Еженедельный отчёт',
 };
 
-export const TIMEZONE_OPTIONS = [
-  { value: 'Europe/Moscow', label: 'Москва (UTC+3)' },
-  { value: 'Europe/Samara', label: 'Самара (UTC+4)' },
-  { value: 'Asia/Yekaterinburg', label: 'Екатеринбург (UTC+5)' },
-  { value: 'Asia/Novosibirsk', label: 'Новосибирск (UTC+7)' },
-  { value: 'Asia/Vladivostok', label: 'Владивосток (UTC+10)' },
-] as const;
-
 function chunk<T>(array: readonly T[], size: number): T[][] {
   const result: T[][] = [];
   for (let i = 0; i < array.length; i += size) {
@@ -71,8 +65,13 @@ function chunk<T>(array: readonly T[], size: number): T[][] {
 
 export async function getOrCreateSettings(clientId: string): Promise<NotificationSettings> {
   const settings = await NotificationSettings.findOne({ where: { clientId } });
-  if (settings) return settings;
-  return NotificationSettings.create({ clientId });
+  if (settings) {
+    if (settings.timezone !== DEFAULT_TIMEZONE) {
+      await settings.update({ timezone: DEFAULT_TIMEZONE });
+    }
+    return settings;
+  }
+  return NotificationSettings.create({ clientId, timezone: DEFAULT_TIMEZONE });
 }
 
 export function buildTimeKeyboard(): InlineKeyboard {
@@ -103,24 +102,13 @@ export function buildTypesKeyboard(settings: NotificationSettings): InlineKeyboa
   return keyboard;
 }
 
-export function buildTimezoneKeyboard(): InlineKeyboard {
-  const keyboard = new InlineKeyboard();
-  for (const option of TIMEZONE_OPTIONS) {
-    keyboard.row(InlineKeyboard.text(option.label, `settings:tz:${option.value}`));
-  }
-  return keyboard;
-}
-
 export function buildSettingsKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
     .row(
       InlineKeyboard.text('Изменить время', 'settings:edit:time'),
       InlineKeyboard.text('Изменить частоту', 'settings:edit:frequency'),
     )
-    .row(
-      InlineKeyboard.text('Изменить типы', 'settings:edit:types'),
-      InlineKeyboard.text('Изменить часовой пояс', 'settings:edit:timezone'),
-    );
+    .row(InlineKeyboard.text('Изменить типы', 'settings:edit:types'));
 }
 
 export function formatFrequency(frequency: NotificationFrequency): string {
@@ -140,8 +128,7 @@ export function formatSettingsMessage(settings: NotificationSettings): string {
 ` +
     `⏰ Время: ${settings.reminderTime}\n` +
     `📅 Частота: ${formatFrequency(settings.frequency)}\n` +
-    `📨 Типы: ${formatTypes(settings.enabledTypes)}\n` +
-    `🌍 Часовой пояс: ${settings.timezone}`
+    `📨 Типы: ${formatTypes(settings.enabledTypes)}`
   );
 }
 

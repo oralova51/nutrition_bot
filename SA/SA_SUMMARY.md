@@ -44,7 +44,7 @@ Telegram-бот «Виртуальный консультант по питан�
 - **EnrollmentLinkAttempt** (лог ФТ-1): `id, linkId, attemptedAt, telegramId?, result(success|expired|already_used|invalid_code|enrollment_cancelled)`
 - **NutritionDiary:** `id, clientEnrollmentId(NOT NULL), clientId(denorm), mealAt, description, approxCalories?, hasPhoto, photoRef?(encrypted), status(filled|pending|needs_clarification), createdAt`
 - **Habit:** `id, clientId, description, status(active|inactive), frequency(daily|weekdays|custom)`
-- **NotificationSettings** (1:1 к Client): `id, clientId(unique), reminderTime(HH:mm), frequency(daily|every_other_day|three_per_week|custom_days), enabledTypes(diary|recommendations|weekly_report), timezone(IANA, def Europe/Moscow), enabled, disabledReason?(user_request|inactivity)`
+- **NotificationSettings** (1:1 к Client): `id, clientId(unique), reminderTime(HH:mm), frequency(daily|every_other_day|three_per_week|custom_days), enabledTypes(diary|recommendations|weekly_report), timezone(IANA, def Europe/Kaliningrad), enabled, disabledReason?(user_request|inactivity)`
 - **Questionnaire:** `id, clientEnrollmentId, clientId(denorm), answers(json), currentQuestion, status(in_progress|completed), lastAnswerAt?, lastReminderAt?, completedAt?, analysisResult?(json)`
 - **Recommendation:** `id, clientId, nutritionDiaryId?, questionnaireId?(ровно один из двух), type(product|habit|regimen|calories), priority(critical|high|medium|low), content?(текст рекомендации), status(sent|read|applied|dismissed), createdAt`
 - **Message:** `id, clientId, recommendationId?, type(recommendation|reminder|questionnaire_reminder|evening_reminder|report|info), category(transactional|optional), content, channel(telegram|whatsapp|max), deliveryStatus(sent|delivered|read|delivery_failed), retryCount(0..3), createdAt`
@@ -141,7 +141,7 @@ Telegram-бот «Виртуальный консультант по питан�
 
 ## 11. Открытые вопросы / допущения
 
-- **Часовой пояс:** MVP — `language_code` + default `Europe/Moscow`, ручной выбор в `/settings`.
+- **Часовой пояс:** MVP — фиксированный `Europe/Kaliningrad` для всех клиентов (студия в Калининграде); ручной выбор в `/settings` отключён.
 - **NotificationSettings** привязаны к Client (1:1); при параллельных enrollment потребуется пересмотр.
 - **Reminder vs Message:** Reminder — правило расписания, Message — факт доставки; связь в MVP не обязательна.
 - **Auth admin:** MVP static token; prod — JWT + RBAC.

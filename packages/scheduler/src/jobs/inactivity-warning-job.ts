@@ -4,7 +4,7 @@
 // - Отправляется только клиентам с активным enrollment и включёнными уведомлениями.
 // - Отправляется один раз за период неактивности: не повторяем, если предупреждение уже
 //   есть в БД и создано позже последнего взаимодействия клиента.
-// - Время отправки — 10:00 в часовом поясе клиента (NotificationSettings.timezone).
+// - Время отправки — 10:00 по Europe/Kaliningrad (MVP: фиксированный пояс студии).
 
 import { subHours } from 'date-fns';
 import { format, toZonedTime } from 'date-fns-tz';
@@ -12,6 +12,7 @@ import { Op } from 'sequelize';
 import {
   Client,
   ClientEnrollment,
+  DEFAULT_TIMEZONE,
   Message,
   NotificationSettings,
   sendTelegramMessageWithRetry,
@@ -67,7 +68,7 @@ export async function runInactivityWarningJob(logger: Logger): Promise<void> {
     const enrollment = clientWithAssoc.enrollments?.[0];
     if (!settings || !enrollment) continue;
 
-    const timezone = settings.timezone;
+    const timezone = DEFAULT_TIMEZONE;
     const zonedNow = toZonedTime(now, timezone);
     const currentTime = format(zonedNow, 'HH:mm', { timeZone: timezone });
 

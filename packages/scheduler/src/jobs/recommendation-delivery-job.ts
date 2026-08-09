@@ -1,10 +1,11 @@
-// Отложенная отправка рекомендаций medium/low в 20:00 по часовому поясу клиента.
+// Отложенная отправка рекомендаций medium/low в 20:00 по Europe/Kaliningrad.
 // Roadmap 5.8: medium/low рекомендации создаются сразу, но отправляются вечером.
 
 import { format, toZonedTime } from 'date-fns-tz';
 import { Op } from 'sequelize';
 import {
   Client,
+  DEFAULT_TIMEZONE,
   Message,
   NotificationSettings,
   Recommendation,
@@ -46,7 +47,7 @@ export async function runRecommendationDeliveryJob(logger: Logger): Promise<void
       continue;
     }
 
-    const timezone = settings.timezone;
+    const timezone = DEFAULT_TIMEZONE;
     const zonedNow = toZonedTime(now, timezone);
     const currentTime = format(zonedNow, 'HH:mm', { timeZone: timezone });
     if (currentTime !== '20:00') {

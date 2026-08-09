@@ -1,5 +1,5 @@
 // Обработчик настроек уведомлений: /settings и inline-кнопки.
-// Реализует ФТ-3 (roadmap 3.16–3.24).
+// Реализует ФТ-3 (roadmap 3.16–3.24). Часовой пояс фиксирован (Калининград).
 
 import type { CallbackQueryContext, CommandContext } from 'grammy';
 import { type NotificationFrequency, type NotificationType } from '@nutrition-bot/shared';
@@ -8,7 +8,6 @@ import {
   buildFrequencyKeyboard,
   buildSettingsKeyboard,
   buildTimeKeyboard,
-  buildTimezoneKeyboard,
   buildTypesKeyboard,
   formatSettingsMessage,
   getOrCreateSettings,
@@ -21,9 +20,11 @@ const WIZARD_INTRO = 'Давайте настроим уведомления, ч
 const STEP_TIME_TEXT = 'Выберите время напоминания:';
 const STEP_FREQUENCY_TEXT = 'Выберите частоту уведомлений:';
 const STEP_TYPES_TEXT = 'Выберите типы уведомлений. Нажмите «Готово», когда закончите.';
-const STEP_TIMEZONE_TEXT = 'Выберите ваш часовой пояс:';
 
 const MIN_TYPES_MESSAGE = 'Выберите хотя бы один тип уведомлений.';
+
+const WIZARD_DONE_SUFFIX =
+  'Теперь я буду присылать напоминания по вашему расписанию (время Калининграда). Если захотите что-то поменять — отправьте /settings.';
 
 export async function handleSettingsCommand(ctx: CommandContext<BotContext>): Promise<void> {
   if (!ctx.client) {
@@ -110,23 +111,9 @@ export async function handleSettingsCallback(ctx: CallbackQueryContext<BotContex
         return;
       }
       if (isWizard) {
-        await ctx.editMessageText(STEP_TIMEZONE_TEXT, {
-          reply_markup: buildTimezoneKeyboard(),
-        });
-      } else {
-        await ctx.editMessageText(formatSettingsMessage(settings), {
-          reply_markup: buildSettingsKeyboard(),
-        });
-      }
-      break;
-    }
-    case 'tz': {
-      await settings.update({ timezone: value });
-      if (isWizard) {
         await enrollment?.update({ onboardingStatus: 'completed' });
         await ctx.editMessageText(
-          `Настройки сохранены 🎉\n\n${formatSettingsMessage(settings)}\n\n` +
-            'Теперь я буду присылать напоминания по вашему расписанию. Если захотите что-то поменять — отправьте /settings.',
+          `Настройки сохранены 🎉\n\n${formatSettingsMessage(settings)}\n\n${WIZARD_DONE_SUFFIX}`,
           { reply_markup: { inline_keyboard: [] } },
         );
       } else {
@@ -151,11 +138,6 @@ export async function handleSettingsCallback(ctx: CallbackQueryContext<BotContex
         case 'types':
           await ctx.editMessageText(STEP_TYPES_TEXT, {
             reply_markup: buildTypesKeyboard(settings),
-          });
-          break;
-        case 'timezone':
-          await ctx.editMessageText(STEP_TIMEZONE_TEXT, {
-            reply_markup: buildTimezoneKeyboard(),
           });
           break;
         default:

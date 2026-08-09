@@ -27,6 +27,9 @@ export const DISABLED_REASONS = ['user_request', 'inactivity'] as const;
 
 export type DisabledReason = (typeof DISABLED_REASONS)[number];
 
+/** Единый часовой пояс студии (MVP: все клиенты в Калининграде). */
+export const DEFAULT_TIMEZONE = 'Europe/Kaliningrad';
+
 export class NotificationSettings extends Model<
   InferAttributes<NotificationSettings>,
   InferCreationAttributes<NotificationSettings>
@@ -72,7 +75,7 @@ export function initNotificationSettingsModel(sequelize: Sequelize): typeof Noti
       timezone: {
         type: DataTypes.STRING(64),
         allowNull: false,
-        defaultValue: 'Europe/Moscow',
+        defaultValue: DEFAULT_TIMEZONE,
       },
       enabled: {
         type: DataTypes.BOOLEAN,

@@ -7,8 +7,8 @@ import { Op } from 'sequelize';
 import { processDiaryEntry } from '@nutrition-bot/ai';
 import {
   createLogger,
+  DEFAULT_TIMEZONE,
   NutritionDiary,
-  NotificationSettings,
   sendTelegramMessage,
 } from '@nutrition-bot/shared';
 import type { BotContext } from '../context.js';
@@ -42,7 +42,7 @@ export async function handleNutritionDiaryEntry(ctx: BotContext, text: string): 
     return;
   }
 
-  const timezone = await resolveClientTimezone(client.id);
+  const timezone = DEFAULT_TIMEZONE;
   const pendingClarification = await findPendingClarification(enrollment.id, timezone);
 
   if (isIncompleteDescription(text)) {
@@ -150,11 +150,6 @@ function buildZonedDate(timezone: string, hours: number, minutes: number): Date 
 
 function getCurrentZonedTime(timezone: string): Date {
   return fromZonedTime(toZonedTime(new Date(), timezone), timezone);
-}
-
-async function resolveClientTimezone(clientId: string): Promise<string> {
-  const settings = await NotificationSettings.findOne({ where: { clientId } });
-  return settings?.timezone ?? 'Europe/Moscow';
 }
 
 function isIncompleteDescription(text: string): boolean {
@@ -269,7 +264,7 @@ export async function handleNutritionDiaryPhoto(ctx: BotContext): Promise<void> 
   }
   const fileId = largestPhoto.file_id;
   const description = ctx.message?.caption?.trim() ?? null;
-  const timezone = await resolveClientTimezone(client.id);
+  const timezone = DEFAULT_TIMEZONE;
 
   const entry = await NutritionDiary.create({
     clientEnrollmentId: enrollment.id,

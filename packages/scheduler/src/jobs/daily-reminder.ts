@@ -8,6 +8,7 @@ import { Op } from 'sequelize';
 import {
   Client,
   ClientEnrollment,
+  DEFAULT_TIMEZONE,
   NotificationSettings,
   sendTelegramMessageWithRetry,
   type NotificationFrequency,
@@ -57,7 +58,7 @@ export async function runDailyReminderJob(logger: Logger): Promise<void> {
     const enrollment = clientWithAssoc.enrollments?.[0];
     if (!settings || !enrollment) continue;
 
-    const timezone = settings.timezone;
+    const timezone = DEFAULT_TIMEZONE;
     const zonedNow = toZonedTime(new Date(), timezone);
     const currentTime = format(zonedNow, 'HH:mm', { timeZone: timezone });
 

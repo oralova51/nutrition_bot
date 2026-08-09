@@ -7,6 +7,7 @@ import { Op } from 'sequelize';
 import {
   Client,
   ClientEnrollment,
+  DEFAULT_TIMEZONE,
   Message,
   NotificationSettings,
   NutritionDiary,
@@ -57,7 +58,7 @@ export async function runEveningReminderJob(logger: Logger): Promise<void> {
     const enrollment = clientWithAssoc.enrollments?.[0];
     if (!settings || !enrollment) continue;
 
-    const timezone = settings.timezone;
+    const timezone = DEFAULT_TIMEZONE;
     const zonedNow = toZonedTime(new Date(), timezone);
     const currentTime = format(zonedNow, 'HH:mm', { timeZone: timezone });
     if (currentTime !== '20:00') {

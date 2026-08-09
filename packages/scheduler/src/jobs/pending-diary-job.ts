@@ -8,6 +8,7 @@ import { Op } from 'sequelize';
 import {
   Client,
   ClientEnrollment,
+  DEFAULT_TIMEZONE,
   NotificationSettings,
   NutritionDiary,
 } from '@nutrition-bot/shared';
@@ -48,7 +49,7 @@ export async function runPendingDiaryJob(logger: Logger): Promise<void> {
     const enrollment = clientWithAssoc.enrollments?.[0];
     if (!enrollment) continue;
 
-    const timezone = clientWithAssoc.notificationSettings?.timezone ?? 'Europe/Moscow';
+    const timezone = DEFAULT_TIMEZONE;
     const { start, end, dateString } = getYesterdayZonedDayRange(new Date(), timezone);
 
     const existingCount = await NutritionDiary.count({

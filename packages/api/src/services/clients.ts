@@ -4,6 +4,7 @@ import {
   Client,
   ClientEnrollment,
   Course,
+  DEFAULT_TIMEZONE,
   EnrollmentLink,
   NotificationSettings,
   getSequelize,
@@ -453,7 +454,7 @@ export async function getClientDetail(clientId: string): Promise<ClientDetailVie
       enabled: notificationSettings?.enabled ?? true,
       reminderTime: notificationSettings?.reminderTime ?? '09:00',
       frequency: notificationSettings?.frequency ?? 'daily',
-      timezone: notificationSettings?.timezone ?? 'Europe/Moscow',
+      timezone: notificationSettings?.timezone ?? DEFAULT_TIMEZONE,
     },
   };
 }
