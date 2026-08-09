@@ -238,13 +238,28 @@ export function formatReportMessage(report: Report): string {
   return lines.join('\n');
 }
 
-async function findEnrollmentsToComplete(today: string): Promise<ClientEnrollment[]> {
+async function findEnrollmentsToComplete(
+  today: string,
+  options: { clientId?: string; force?: boolean } = {},
+): Promise<ClientEnrollment[]> {
+  const where: Record<string, unknown> = {
+    status: 'active',
+    onboardingStatus: 'completed',
+  };
+
+  // force + clientId: симуляция конца курса до endDate (ручной тест через Postman).
+  // Без clientId (и в cron) — только enrollment'ы с наступившим endDate.
+  if (options.force === true && options.clientId) {
+    where.clientId = options.clientId;
+  } else {
+    where.endDate = { [Op.lte]: today };
+    if (options.clientId) {
+      where.clientId = options.clientId;
+    }
+  }
+
   return ClientEnrollment.findAll({
-    where: {
-      status: 'active',
-      endDate: { [Op.lte]: today },
-      onboardingStatus: 'completed',
-    },
+    where,
     include: [
       {
         model: Client,
@@ -419,21 +434,43 @@ export async function completeCourse(enrollment: ClientEnrollment, logger: Logge
   );
 }
 
-export async function findAndCompleteCourses(logger: Logger): Promise<void> {
+export async function findAndCompleteCourses(
+  logger: Logger,
+  options: { clientId?: string; force?: boolean } = {},
+): Promise<{ considered: number; sent: number; skipped: number; errors: number }> {
   const now = new Date();
   const today = format(now, 'yyyy-MM-dd');
 
-  const enrollments = await findEnrollmentsToComplete(today);
-  logger.info({ count: enrollments.length, today }, "Найдено enrollment'ов для завершения курса");
+  const enrollments = await findEnrollmentsToComplete(today, options);
+  logger.info(
+    {
+      count: enrollments.length,
+      today,
+      force: options.force === true,
+      clientId: options.clientId ?? null,
+    },
+    "Найдено enrollment'ов для завершения курса",
+  );
+
+  const result = {
+    considered: enrollments.length,
+    sent: 0,
+    skipped: 0,
+    errors: 0,
+  };
 
   for (const enrollment of enrollments) {
     try {
       await completeCourse(enrollment, logger);
+      result.sent += 1;
     } catch (err) {
+      result.errors += 1;
       logger.error(
         { enrollmentId: enrollment.id, err },
         'Не удалось завершить курс для enrollment',
       );
     }
   }
+
+  return result;
 }

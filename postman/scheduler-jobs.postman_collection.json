@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Scheduler — ручной запуск job'ов",
-    "description": "Принудительный запуск напоминаний и evening summary без ожидания слота времени (force=true).\n\nПеред тестом:\n1) `npm run dev:scheduler` (порт 3002)\n2) Variables → adminToken = ADMIN_API_TOKEN из .env (без слова Bearer)\n3) Auth коллекции: Bearer Token → {{adminToken}} (все POST наследуют его)\n\nЕсли daily-reminder даёт 200, а evening-summary 401 — в Postman у конкретного запроса отключён/переопределён Authorization. Проще: Duplicate daily-reminder и поменяй path на evening-summary.\n\nФТ-24: SA/evening-summary.md",
+    "description": "Принудительный запуск job'ов без ожидания cron/слота времени (force=true).\n\nПеред тестом:\n1) `npm run dev:scheduler` (порт 3002) и `npm run dev:api` (порт 3000) — для секции «После завершения»\n2) Variables → adminToken = ADMIN_API_TOKEN из .env (без слова Bearer)\n3) Auth коллекции: Bearer Token → {{adminToken}} (все POST наследуют его)\n\nЕсли один job даёт 200, а другой 401 — у конкретного запроса отключён/переопределён Authorization. Проще: Duplicate рабочего запроса и поменяй path.\n\nВажно после симуляции конца курса:\n- Enrollment переходит в status=completed.\n- На completed enrollment нельзя создать/перегенерировать ссылку (422 ENROLLMENT_NOT_ACTIVE) — это ожидаемо.\n- Для повторного курса: сначала POST /admin/clients/:clientId/enrollments (новый enrollment), затем при необходимости POST .../link на НОВЫЙ enrollmentId.\n- Если у клиента уже есть telegramId, новая ссылка обычно не нужна: онбординг для продления ставится completed, бот подхватит active enrollment сам. При активации ссылки на такой enrollment анкета не запускается повторно — сразу дневник.\n\nФТ-24 evening summary: SA/evening-summary.md\nФТ-13/14 course completion: SA/course-completion.md\nФТ-18 продление: roadmap 8.4",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -21,6 +21,12 @@
       "type": "string"
     },
     {
+      "key": "apiUrl",
+      "value": "http://localhost:3000/api/v1",
+      "type": "string",
+      "description": "Admin API base (для повторного курса после completion)"
+    },
+    {
       "key": "adminToken",
       "value": "",
       "type": "string",
@@ -31,6 +37,30 @@
       "value": "608d96f6-fdd4-48cd-a44d-dfff89dde7c0",
       "type": "string",
       "description": "UUID тестового клиента"
+    },
+    {
+      "key": "courseId",
+      "value": "",
+      "type": "string",
+      "description": "UUID курса для нового enrollment (продление/повтор)"
+    },
+    {
+      "key": "enrollmentId",
+      "value": "",
+      "type": "string",
+      "description": "UUID enrollment. После «Create new enrollment» сюда пишется новый id."
+    },
+    {
+      "key": "completedEnrollmentId",
+      "value": "",
+      "type": "string",
+      "description": "UUID enrollment, который уже completed — для негативной проверки 422"
+    },
+    {
+      "key": "botUsername",
+      "value": "",
+      "type": "string",
+      "description": "Username бота без @ — для проверки URL ссылки"
     }
   ],
   "item": [
@@ -229,6 +259,201 @@
             ],
             "type": "text/javascript"
           }
+        }
+      ]
+    },
+    {
+      "name": "Course completion (force, все с наступившим endDate)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"force\": true\n}"
+        },
+        "url": "{{schedulerUrl}}/internal/jobs/course-completion",
+        "description": "ФТ-13/14: завершает активные enrollment'ы с endDate <= сегодня. В Telegram: итоговый отчёт + оценка + продление. Повторный запуск по уже completed не шлёт ничего (considered=0)."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Job result has counters', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.job).to.eql('course-completion');",
+              "  pm.expect(json.force).to.eql(true);",
+              "  pm.expect(json).to.have.property('sent');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Course completion (force, один clientId — симуляция конца курса)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"force\": true,\n  \"clientId\": \"{{clientId}}\"\n}"
+        },
+        "url": "{{schedulerUrl}}/internal/jobs/course-completion",
+        "description": "Симуляция конца курса для одного клиента: игнорирует endDate (можно завершить досрочно). Нужен active enrollment + onboarding completed + telegramId. После успеха смотри Telegram и GET specialist reports?type=final. Повторный вызов: considered=0 (уже completed).\n\nДальше для повторного курса — папка «После завершения — повторный курс»: нельзя генерировать ссылку на этот же (completed) enrollmentId."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Job is course-completion', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.job).to.eql('course-completion');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "После завершения — повторный курс",
+      "description": "ФТ-18 / roadmap 8.4. После course-completion enrollment = completed. Ссылку на него создать нельзя (422). Нужен новый ClientEnrollment, затем опционально ссылка на новый id.\n\nПорядок:\n1) Create new enrollment\n2) (опционально) Create link for NEW enrollment — если клиент ещё без telegramId; если telegram уже привязан, шаг 2 обычно не нужен\n3) Create link on OLD enrollment — негативная проверка, ожидай 422",
+      "item": [
+        {
+          "name": "Create new enrollment (повторный курс)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"courseId\": \"{{courseId}}\",\n  \"startDate\": \"2026-08-10\"\n}"
+            },
+            "url": "{{apiUrl}}/admin/clients/{{clientId}}/enrollments",
+            "description": "Создаёт новый active enrollment для существующего клиента (продление/повтор). Работает только если нет active/paused enrollment (после completion — ок). onboardingStatus сразу completed (клиент уже проходил онбординг). Сохраняет новый enrollmentId."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test('New active enrollment created', function () {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.id).to.be.a('string');",
+                  "  pm.expect(json.status).to.eql('active');",
+                  "  pm.expect(json.onboardingStatus).to.eql('completed');",
+                  "  pm.collectionVariables.set('enrollmentId', json.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create link for NEW enrollment (опционально)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{apiUrl}}/admin/enrollments/{{enrollmentId}}/link",
+            "description": "Генерирует ссылку на НОВЫЙ enrollment (после «Create new enrollment»). Нужна, если telegram ещё не привязан. Если клиент уже в боте — ссылка не обязательна: бот найдёт его по telegramId и active enrollment."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test('Link is active', function () {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.link.status).to.eql('active');",
+                  "  pm.expect(json.link.enrollmentId).to.eql(pm.collectionVariables.get('enrollmentId'));",
+                  "  if (pm.collectionVariables.get('botUsername')) {",
+                  "    pm.expect(json.link.url).to.include('t.me/' + pm.collectionVariables.get('botUsername'));",
+                  "  }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create link on completed enrollment (ожидай 422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{apiUrl}}/admin/enrollments/{{completedEnrollmentId}}/link",
+            "description": "Негативная проверка: на enrollment со status=completed ссылку создать нельзя → 422 ENROLLMENT_NOT_ACTIVE. Задайте completedEnrollmentId вручную (id enrollment ДО «Create new enrollment»)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 422', function () {",
+                  "  pm.response.to.have.status(422);",
+                  "});",
+                  "pm.test('Error is ENROLLMENT_NOT_ACTIVE', function () {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.error.code).to.eql('ENROLLMENT_NOT_ACTIVE');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
         }
       ]
     }

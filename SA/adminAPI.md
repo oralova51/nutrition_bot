@@ -663,6 +663,17 @@ Admin API **не вызывает** Telegram напрямую. Ниже — ме
 проверка отчёта — `GET /specialist/clients/:id/reports?type=daily` (`postman/stage9-dashboards.postman_collection.json`).
 Детали: `SA/evening-summary.md`.
 
+Дополнительно для ФТ-13/14 (завершение курса / итоговый отчёт): в той же коллекции —
+`POST {{schedulerUrl}}/internal/jobs/course-completion` с `{ "force": true, "clientId": "..." }`
+(симуляция конца курса до `endDate`); проверка — `GET /specialist/clients/:id/reports?type=final`.
+Детали: `SA/course-completion.md`.
+
+После `completed` ссылку на тот же enrollment создать нельзя (`422 ENROLLMENT_NOT_ACTIVE`). Для повторного курса (ФТ-18):
+1. `POST /admin/clients/:clientId/enrollments` `{ courseId, startDate }`
+2. при необходимости `POST /admin/enrollments/:newId/link` (если telegram ещё не привязан)
+
+В Postman: папка «После завершения — повторный курс» (`scheduler-jobs`) и «Create enrollment for existing client» (`stage9-dashboards`).
+
 ---
 
 ## 9. Связь с функциональными требованиями
@@ -674,6 +685,7 @@ Admin API **не вызывает** Telegram напрямую. Ниже — ме
 | ФТ-2 | поле `onboarding` в ответах clients |
 | ФТ-10 | `status=inactive`, `disabledReason=inactivity` |
 | ФТ-24 | Scheduler: `POST /internal/jobs/evening-summary`; Specialist: `GET .../reports?type=daily` |
+| ФТ-13, ФТ-14 | Scheduler: `POST /internal/jobs/course-completion`; Specialist: `GET .../reports?type=final` |
 | CJM (alt) | `GET /admin/enrollments/expired-links` |
 
 ---

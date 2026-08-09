@@ -3,6 +3,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { URL } from 'node:url';
 import type { Logger } from 'pino';
+import { runCourseCompletionJob } from './jobs/course-completion-job.js';
 import { runDailyReminderJob } from './jobs/daily-reminder.js';
 import { runEveningReminderJob } from './jobs/evening-reminder-job.js';
 import { runEveningSummaryJob } from './jobs/evening-summary-job.js';
@@ -17,6 +18,7 @@ const JOB_ROUTES: Record<string, JobRunner> = {
   '/internal/jobs/daily-reminder': runDailyReminderJob,
   '/internal/jobs/evening-reminder': runEveningReminderJob,
   '/internal/jobs/evening-summary': runEveningSummaryJob,
+  '/internal/jobs/course-completion': runCourseCompletionJob,
 };
 
 function sendJson(res: ServerResponse, statusCode: number, body: unknown): void {

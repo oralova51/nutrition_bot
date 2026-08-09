@@ -5,13 +5,14 @@
 
 import type { CommandContext } from 'grammy';
 import type { Logger } from 'pino';
-import { NotificationSettings } from '@nutrition-bot/shared';
+import { NotificationSettings, type ClientEnrollment } from '@nutrition-bot/shared';
 import type { BotContext } from '../context.js';
+import { startSettingsWizard } from '../handlers/settings-handler.js';
 import {
   activateEnrollmentLink,
   type ActivationErrorCode,
 } from '../services/enrollment-link-activation.js';
-import { startOnboarding } from '../services/onboarding.js';
+import { continueQuestionnaire, startOnboarding } from '../services/onboarding.js';
 
 const AWAITING_LINK_MESSAGE =
   'Привет! Я бот-консультант по питанию 🙂\n\n' +
@@ -22,6 +23,10 @@ const WELCOME_BACK_MESSAGE = 'Привет снова! Уведомления в
 
 const ACTIVATION_SUCCESS_MESSAGE =
   'Отлично, вы подключены к курсу! Сейчас познакомимся поближе и зададим несколько коротких вопросов.';
+
+/** ФТ-18: повторный/продлённый курс — анкета уже пройдена, сразу дневник. */
+const RENEWAL_READY_MESSAGE =
+  'С возвращением! Новый курс уже активен — можете сразу писать, что съели, текстом или фото 🙂';
 
 const ACTIVATION_ERROR_MESSAGES: Record<ActivationErrorCode, string> = {
   INVALID_CODE:
@@ -36,6 +41,33 @@ const ACTIVATION_ERROR_MESSAGES: Record<ActivationErrorCode, string> = {
 
 const INTERNAL_ERROR_MESSAGE =
   'Что-то пошло не так при подключении. Попробуйте ещё раз чуть позже или обратитесь к администратору студии.';
+
+/**
+ * После активации ссылки ведём клиента по фактическому onboardingStatus.
+ * Для продления (completed) анкету не запускаем — сразу дневник.
+ */
+async function continueAfterActivation(
+  ctx: CommandContext<BotContext>,
+  enrollment: ClientEnrollment,
+): Promise<void> {
+  switch (enrollment.onboardingStatus) {
+    case 'completed':
+      await ctx.reply(RENEWAL_READY_MESSAGE);
+      return;
+    case 'settings_pending':
+      await ctx.reply(ACTIVATION_SUCCESS_MESSAGE);
+      await startSettingsWizard(ctx);
+      return;
+    case 'in_progress':
+      await ctx.reply(ACTIVATION_SUCCESS_MESSAGE);
+      await continueQuestionnaire(ctx, enrollment);
+      return;
+    case 'pending':
+    default:
+      await ctx.reply(ACTIVATION_SUCCESS_MESSAGE);
+      await startOnboarding(ctx, enrollment);
+  }
+}
 
 export function createStartHandler(
   logger: Logger,
@@ -76,13 +108,17 @@ export function createStartHandler(
 
       if (result.success) {
         logger.info(
-          { telegramId, enrollmentId: result.enrollment.id, clientId: result.clientId },
+          {
+            telegramId,
+            enrollmentId: result.enrollment.id,
+            clientId: result.clientId,
+            onboardingStatus: result.enrollment.onboardingStatus,
+          },
           'Ссылка-приглашение активирована',
         );
         ctx.client = result.client;
         ctx.enrollment = result.enrollment;
-        await ctx.reply(ACTIVATION_SUCCESS_MESSAGE);
-        await startOnboarding(ctx, result.enrollment);
+        await continueAfterActivation(ctx, result.enrollment);
         return;
       }
 

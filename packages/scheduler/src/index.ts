@@ -100,6 +100,7 @@ async function main(): Promise<void> {
 
   // Завершение курса (roadmap 7.1–7.2, ФТ-13): перевод в completed и остановка регулярных напоминаний.
   // 00:01 UTC — после полуночи для российских часовых поясов, до утреннего напоминания.
+  // Ручной тест: POST /internal/jobs/course-completion { force: true, clientId }.
   schedule('1 0 * * *', () => {
     void runCourseCompletionJob(logger).catch((err: unknown) => {
       logger.error({ err }, 'Завершение курса: необработанная ошибка job');

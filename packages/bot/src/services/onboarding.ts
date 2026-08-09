@@ -192,6 +192,17 @@ export async function startOnboarding(
   ctx: BotContext,
   enrollment: ClientEnrollment,
 ): Promise<void> {
+  // Продление/повторный курс (ФТ-18): enrollment уже с onboardingStatus=completed —
+  // анкету и настройки не запускаем повторно.
+  if (enrollment.onboardingStatus === 'completed') {
+    return;
+  }
+
+  if (enrollment.onboardingStatus === 'settings_pending') {
+    await startSettingsWizard(ctx);
+    return;
+  }
+
   if (enrollment.onboardingStatus === 'pending') {
     await enrollment.update({ onboardingStatus: 'in_progress' });
   }

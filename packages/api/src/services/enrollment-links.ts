@@ -62,10 +62,14 @@ async function loadActiveEnrollment(enrollmentId: string): Promise<ClientEnrollm
   }
 
   if (enrollment.status !== 'active') {
+    const hint =
+      enrollment.status === 'completed' || enrollment.status === 'cancelled'
+        ? ` Для повторного курса создайте новый enrollment: POST /admin/clients/${enrollment.clientId}/enrollments, затем генерируйте ссылку уже на новый id.`
+        : '';
     throw new ApiError(
       422,
       'ENROLLMENT_NOT_ACTIVE',
-      `ClientEnrollment '${enrollmentId}' has status '${enrollment.status}', expected 'active'`,
+      `ClientEnrollment '${enrollmentId}' has status '${enrollment.status}', expected 'active'.${hint}`,
     );
   }
 
