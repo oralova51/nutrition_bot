@@ -10,6 +10,7 @@
 import { Client, ClientEnrollment, NotificationSettings } from '@nutrition-bot/shared';
 import type { NextFunction } from 'grammy';
 import type { Logger } from 'pino';
+import { Op } from 'sequelize';
 import type { BotContext } from '../context.js';
 
 const WELCOME_BACK_MESSAGE = 'Рад видеть, что ты вернулся! Давай продолжим? 🙂';
@@ -22,6 +23,41 @@ function isOptOutCommand(ctx: BotContext): boolean {
   if (callbackData?.startsWith('pause:') || callbackData?.startsWith('stop:')) return true;
 
   return false;
+}
+
+/**
+ * Выбирает enrollment для контекста бота.
+ * Нельзя полагаться только на startDate DESC: при повторном курсе новый enrollment
+ * может иметь более раннюю startDate, и тогда подтянется старый completed —
+ * ответы анкеты уйдут в дневник.
+ */
+async function findEnrollmentForClient(clientId: string): Promise<ClientEnrollment | null> {
+  const onboardingEnrollment = await ClientEnrollment.findOne({
+    where: {
+      clientId,
+      status: { [Op.in]: ['active', 'paused'] },
+      onboardingStatus: { [Op.in]: ['pending', 'in_progress', 'settings_pending'] },
+    },
+    order: [['startDate', 'DESC']],
+  });
+  if (onboardingEnrollment) return onboardingEnrollment;
+
+  const activeEnrollment = await ClientEnrollment.findOne({
+    where: {
+      clientId,
+      status: { [Op.in]: ['active', 'paused'] },
+    },
+    order: [['startDate', 'DESC']],
+  });
+  if (activeEnrollment) return activeEnrollment;
+
+  return ClientEnrollment.findOne({
+    where: {
+      clientId,
+      status: 'completed',
+    },
+    order: [['startDate', 'DESC']],
+  });
 }
 
 export function createClientContextMiddleware(
@@ -56,14 +92,7 @@ export function createClientContextMiddleware(
 
     ctx.client = client;
 
-    const enrollment = await ClientEnrollment.findOne({
-      where: {
-        clientId: client.id,
-        status: ['active', 'paused', 'completed'],
-        onboardingStatus: ['pending', 'in_progress', 'settings_pending', 'completed'],
-      },
-      order: [['startDate', 'DESC']],
-    });
+    const enrollment = await findEnrollmentForClient(client.id);
 
     if (enrollment) {
       ctx.enrollment = enrollment;

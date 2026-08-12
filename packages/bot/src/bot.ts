@@ -14,6 +14,7 @@ import {
 } from './handlers/opt-out-handler.js';
 import { handleSettingsCallback, handleSettingsCommand } from './handlers/settings-handler.js';
 import { onboardingMessageHandler } from './handlers/onboarding-handler.js';
+import { handleQuestionnaireButton } from './handlers/questionnaire-handler.js';
 import { photoMessageHandler } from './handlers/photo-handler.js';
 import { createClientContextMiddleware } from './middleware/client-context.js';
 
@@ -27,6 +28,7 @@ export function createBot(token: string, logger: Logger): Bot<BotContext> {
   bot.command('stop', handleStopCommand);
   bot.command('pause', handlePauseCommand);
 
+  bot.callbackQuery(/^q:/, handleQuestionnaireButton);
   bot.callbackQuery(/^settings:/, handleSettingsCallback);
   bot.callbackQuery(/^(stop|pause):/, handleOptOutCallback);
   bot.callbackQuery(/^feedback:/, handleFeedbackCallback);

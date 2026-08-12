@@ -1,7 +1,6 @@
 // State machine онбординга: welcome → questionnaire → settings (roadmap 3.8).
 // Реализует ФТ-2: приветствие, пошаговую анкету из SA/anketa.md, сохранение прогресса
-// и переход к настройкам уведомлений (ФТ-3). Учитывает приблизительные ответы
-// (UserResearch, персона Анна) без жёсткой блокировки при отсутствии цифр.
+// и переход к настройкам уведомлений (ФТ-3). Варианты — через inline-кнопки (SA/adminAPI.md §6.4).
 
 import {
   ClientEnrollment,
@@ -11,6 +10,7 @@ import {
   TOTAL_QUESTIONNAIRE_QUESTIONS,
   type QuestionnaireQuestion,
 } from '@nutrition-bot/shared';
+import { InlineKeyboard } from 'grammy';
 import { startSettingsWizard } from '../handlers/settings-handler.js';
 import type { BotContext } from '../context.js';
 
@@ -26,35 +26,80 @@ const COMPLETED_MESSAGE =
   'Теперь настроим уведомления, чтобы я не беспокоил вас в неудобное время.';
 
 const EMPTY_ANSWER_MESSAGE = 'Пожалуйста, напишите ответ на вопрос.';
-const INVALID_OPTION_MESSAGE = 'Не совсем понял. Выберите один из предложенных вариантов.';
-const INVALID_MULTI_OPTION_MESSAGE =
-  'Не совсем понял. Перечислите номера вариантов через запятую, например: 1, 3, 5.';
+const USE_BUTTONS_MESSAGE = 'Пожалуйста, выберите вариант из меню ниже.';
+const MULTI_MIN_MESSAGE = 'Выберите хотя бы один вариант, затем нажмите «Готово».';
+const FREE_TEXT_PROMPT = 'Напишите своими словами — я учту это в рекомендациях.';
+const INVALID_CALLBACK_MESSAGE = 'Этот вопрос уже пройден. Продолжаем с текущего.';
 
 interface ParsedAnswer {
   value: unknown;
   display: string;
 }
 
+/** Черновик мультивыбора в answers[questionId] до нажатия «Готово». */
+interface MultiDraft {
+  values: string[];
+  awaitingFreeText?: boolean;
+  freeText?: string;
+}
+
+function isMultiDraft(value: unknown): value is MultiDraft {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    Array.isArray((value as MultiDraft).values)
+  );
+}
+
 function formatQuestion(question: QuestionnaireQuestion, index: number): string {
   let text = `Вопрос ${index + 1} из ${TOTAL_QUESTIONNAIRE_QUESTIONS}\n\n${question.text}`;
-  if (question.options) {
-    text += '\n';
-    for (let i = 0; i < question.options.length; i++) {
-      const option = question.options[i];
-      if (option) {
-        text += `\n${i + 1}. ${option.label}`;
-      }
-    }
-    text += '\n\nОтветьте номером варианта';
-    if (question.type === 'multi_choice') {
-      text += ' или несколькими номерами через запятую';
-    }
-    text += '.';
+  if (question.type === 'multi_choice') {
+    text += '\n\nМожно выбрать несколько вариантов. Нажмите «Готово», когда закончите.';
   }
   if (question.hint) {
     text += `\n\n_${question.hint}_`;
   }
   return text;
+}
+
+function buildSingleChoiceKeyboard(questionIndex: number, question: QuestionnaireQuestion): InlineKeyboard {
+  const keyboard = new InlineKeyboard();
+  for (let i = 0; i < (question.options?.length ?? 0); i++) {
+    const option = question.options?.[i];
+    if (!option) continue;
+    keyboard.row(InlineKeyboard.text(option.label, `q:${questionIndex}:opt:${i}`));
+  }
+  return keyboard;
+}
+
+function buildMultiChoiceKeyboard(
+  questionIndex: number,
+  question: QuestionnaireQuestion,
+  selected: ReadonlySet<string>,
+): InlineKeyboard {
+  const keyboard = new InlineKeyboard();
+  for (let i = 0; i < (question.options?.length ?? 0); i++) {
+    const option = question.options?.[i];
+    if (!option) continue;
+    const mark = selected.has(option.value) ? '✅ ' : '';
+    keyboard.row(InlineKeyboard.text(`${mark}${option.label}`, `q:${questionIndex}:toggle:${i}`));
+  }
+  keyboard.row(InlineKeyboard.text('Готово', `q:${questionIndex}:done`));
+  return keyboard;
+}
+
+function buildQuestionKeyboard(
+  question: QuestionnaireQuestion,
+  questionIndex: number,
+  draftValues: string[] = [],
+): InlineKeyboard | undefined {
+  if (question.type === 'single_choice') {
+    return buildSingleChoiceKeyboard(questionIndex, question);
+  }
+  if (question.type === 'multi_choice') {
+    return buildMultiChoiceKeyboard(questionIndex, question, new Set(draftValues));
+  }
+  return undefined;
 }
 
 function parseNumberAnswer(text: string, allowApproximate: boolean): ParsedAnswer | null {
@@ -69,79 +114,53 @@ function parseNumberAnswer(text: string, allowApproximate: boolean): ParsedAnswe
   return { value: { value: text.trim(), approximate: true }, display: text.trim() };
 }
 
-function findOptionByText(question: QuestionnaireQuestion, text: string): number | null {
-  const trimmed = text.trim().toLowerCase();
-  if (!question.options) return null;
-
-  const numericIndex = Number(trimmed);
-  if (!Number.isNaN(numericIndex) && trimmed !== '') {
-    const option = question.options[numericIndex - 1];
-    if (option) return numericIndex - 1;
+function getDraftValues(questionnaire: Questionnaire, question: QuestionnaireQuestion): string[] {
+  const raw = questionnaire.answers[question.id];
+  if (Array.isArray(raw)) {
+    return raw.filter((item): item is string => typeof item === 'string');
   }
-
-  const byLabel = question.options.findIndex((opt) => opt.label.toLowerCase() === trimmed);
-  if (byLabel >= 0) return byLabel;
-
-  const byValue = question.options.findIndex((opt) => opt.value.toLowerCase() === trimmed);
-  if (byValue >= 0) return byValue;
-
-  return null;
+  if (isMultiDraft(raw)) {
+    return raw.values;
+  }
+  return [];
 }
 
-function parseSingleChoiceAnswer(
-  question: QuestionnaireQuestion,
-  text: string,
-): ParsedAnswer | null {
-  const index = findOptionByText(question, text);
-  if (index === null) return null;
-  const option = question.options?.[index];
-  if (!option) return null;
-  return { value: option.value, display: option.label };
+function isAwaitingFreeText(questionnaire: Questionnaire, question: QuestionnaireQuestion): boolean {
+  const raw = questionnaire.answers[question.id];
+  return isMultiDraft(raw) && raw.awaitingFreeText === true;
 }
 
-function parseMultiChoiceAnswer(
-  question: QuestionnaireQuestion,
-  text: string,
-): ParsedAnswer | null {
-  if (!question.options) return null;
-  const parts = text
-    .split(/[,;]/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (parts.length === 0) return null;
+function optionNeedsFreeText(question: QuestionnaireQuestion, values: string[]): boolean {
+  return (question.options ?? []).some(
+    (opt) => opt.allowFreeText && values.includes(opt.value),
+  );
+}
 
-  const values: string[] = [];
-  for (const part of parts) {
-    const index = findOptionByText(question, part);
-    if (index === null) return null;
-    const option = question.options[index];
-    if (!option) return null;
-    if (!values.includes(option.value)) {
-      values.push(option.value);
+function formatMultiDisplay(question: QuestionnaireQuestion, values: string[], freeText?: string): string {
+  const labels = values.map((value) => {
+    const option = question.options?.find((opt) => opt.value === value);
+    if (option?.allowFreeText && freeText) {
+      return `${option.label}: ${freeText}`;
     }
-  }
-
-  const display = values
-    .map((value) => question.options?.find((opt) => opt.value === value)?.label ?? value)
-    .join(', ');
-  return { value: values, display };
+    return option?.label ?? value;
+  });
+  return labels.join(', ');
 }
 
-function parseAnswer(question: QuestionnaireQuestion, text: string): ParsedAnswer | null {
-  if (text.trim() === '') return null;
+function toggleMultiValue(question: QuestionnaireQuestion, current: string[], optionValue: string): string[] {
+  const isSelected = current.includes(optionValue);
+  let next = isSelected ? current.filter((v) => v !== optionValue) : [...current, optionValue];
 
-  switch (question.type) {
-    case 'text':
-      return { value: text.trim(), display: text.trim() };
-    case 'number':
-      return parseNumberAnswer(text, question.allowApproximate ?? false);
-    case 'single_choice':
-      return parseSingleChoiceAnswer(question, text);
-    case 'multi_choice':
-      return parseMultiChoiceAnswer(question, text);
-    default:
-      return { value: text.trim(), display: text.trim() };
+  // «Нет» взаимоисключающе с остальными вариантами (вопрос про здоровье).
+  if (optionValue === 'none' && !isSelected) {
+    next = ['none'];
+  } else if (optionValue !== 'none' && next.includes('none')) {
+    next = next.filter((v) => v !== 'none');
   }
+
+  // Не даём выбрать несуществующие value — только из options.
+  const allowed = new Set((question.options ?? []).map((opt) => opt.value));
+  return next.filter((v) => allowed.has(v));
 }
 
 async function loadOrCreateQuestionnaire(enrollment: ClientEnrollment): Promise<Questionnaire> {
@@ -160,12 +179,23 @@ async function loadOrCreateQuestionnaire(enrollment: ClientEnrollment): Promise<
 }
 
 async function askCurrentQuestion(ctx: BotContext, questionnaire: Questionnaire): Promise<void> {
-  const question = QUESTIONNAIRE_QUESTIONS[questionnaire.currentQuestion];
+  const questionIndex = questionnaire.currentQuestion;
+  const question = QUESTIONNAIRE_QUESTIONS[questionIndex];
   if (!question) {
     return;
   }
-  await ctx.reply(formatQuestion(question, questionnaire.currentQuestion), {
+
+  if (isAwaitingFreeText(questionnaire, question)) {
+    await ctx.reply(FREE_TEXT_PROMPT);
+    return;
+  }
+
+  const draftValues = question.type === 'multi_choice' ? getDraftValues(questionnaire, question) : [];
+  const replyMarkup = buildQuestionKeyboard(question, questionIndex, draftValues);
+
+  await ctx.reply(formatQuestion(question, questionIndex), {
     parse_mode: 'Markdown',
+    ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
   });
 }
 
@@ -185,6 +215,50 @@ async function sendWelcomeMessage(ctx: BotContext): Promise<void> {
     category: 'transactional',
     parseMode: 'Markdown',
   });
+}
+
+async function commitAnswerAndAdvance(
+  ctx: BotContext,
+  enrollment: ClientEnrollment,
+  questionnaire: Questionnaire,
+  question: QuestionnaireQuestion,
+  questionIndex: number,
+  value: unknown,
+  display: string,
+): Promise<void> {
+  const answers = { ...questionnaire.answers, [question.id]: value };
+  const nextIndex = questionIndex + 1;
+  const now = new Date();
+
+  try {
+    await ctx.editMessageText(
+      `Вопрос ${questionIndex + 1} из ${TOTAL_QUESTIONNAIRE_QUESTIONS}\n\n${question.text}\n\n✓ ${display}`,
+      { reply_markup: { inline_keyboard: [] } },
+    );
+  } catch {
+    // Сообщение могло быть не от callback (или уже изменено) — не блокируем прогресс.
+  }
+
+  if (nextIndex >= TOTAL_QUESTIONNAIRE_QUESTIONS) {
+    await questionnaire.update({
+      answers,
+      currentQuestion: nextIndex,
+      status: 'completed',
+      lastAnswerAt: now,
+      completedAt: now,
+    });
+    await completeQuestionnaire(ctx, enrollment);
+    await startSettingsWizard(ctx);
+    return;
+  }
+
+  await questionnaire.update({
+    answers,
+    currentQuestion: nextIndex,
+    lastAnswerAt: now,
+  });
+
+  await askCurrentQuestion(ctx, questionnaire);
 }
 
 /** Отправляет приветствие, создаёт анкету и задаёт первый вопрос. */
@@ -222,7 +296,10 @@ export async function continueQuestionnaire(
   await askCurrentQuestion(ctx, questionnaire);
 }
 
-/** Сохраняет ответ на текущий вопрос и задаёт следующий или завершает анкету. */
+/**
+ * Текстовый ответ: только text/number или дописка к «Другое» после мультивыбора.
+ * Choice-вопросы принимаются через inline-кнопки.
+ */
 export async function handleQuestionnaireAnswer(
   ctx: BotContext,
   enrollment: ClientEnrollment,
@@ -233,16 +310,52 @@ export async function handleQuestionnaireAnswer(
   const question = QUESTIONNAIRE_QUESTIONS[questionIndex];
 
   if (!question) {
-    // Анкета уже завершена, но enrollment ещё не переведён в settings_pending.
     await completeQuestionnaire(ctx, enrollment);
     return;
   }
 
-  const parsed = parseAnswer(question, text);
+  if (isAwaitingFreeText(questionnaire, question)) {
+    const trimmed = text.trim();
+    if (trimmed === '') {
+      await ctx.reply(FREE_TEXT_PROMPT);
+      return;
+    }
+    const draft = questionnaire.answers[question.id];
+    const values = isMultiDraft(draft) ? draft.values : getDraftValues(questionnaire, question);
+    const value = { values, freeText: trimmed };
+    await commitAnswerAndAdvance(
+      ctx,
+      enrollment,
+      questionnaire,
+      question,
+      questionIndex,
+      value,
+      formatMultiDisplay(question, values, trimmed),
+    );
+    return;
+  }
+
+  if (question.type === 'single_choice' || question.type === 'multi_choice') {
+    await ctx.reply(USE_BUTTONS_MESSAGE);
+    await askCurrentQuestion(ctx, questionnaire);
+    return;
+  }
+
+  if (text.trim() === '') {
+    await ctx.reply(EMPTY_ANSWER_MESSAGE);
+    await askCurrentQuestion(ctx, questionnaire);
+    return;
+  }
+
+  let parsed: ParsedAnswer | null = null;
+  if (question.type === 'text') {
+    parsed = { value: text.trim(), display: text.trim() };
+  } else if (question.type === 'number') {
+    parsed = parseNumberAnswer(text, question.allowApproximate ?? false);
+  }
+
   if (parsed === null) {
-    const errorMessage =
-      question.type === 'multi_choice' ? INVALID_MULTI_OPTION_MESSAGE : INVALID_OPTION_MESSAGE;
-    await ctx.reply(question.options ? errorMessage : EMPTY_ANSWER_MESSAGE);
+    await ctx.reply(EMPTY_ANSWER_MESSAGE);
     await askCurrentQuestion(ctx, questionnaire);
     return;
   }
@@ -271,6 +384,119 @@ export async function handleQuestionnaireAnswer(
   });
 
   await askCurrentQuestion(ctx, questionnaire);
+}
+
+/** Обработка нажатий inline-кнопок анкеты (`q:{qi}:opt|toggle|done:...`). */
+export async function handleQuestionnaireCallback(
+  ctx: BotContext,
+  enrollment: ClientEnrollment,
+  callbackData: string,
+): Promise<void> {
+  const parts = callbackData.split(':');
+  if (parts[0] !== 'q' || parts.length < 3) {
+    return;
+  }
+
+  const questionIndex = Number(parts[1]);
+  const action = parts[2];
+  const optionIndex = parts[3] !== undefined ? Number(parts[3]) : NaN;
+
+  const questionnaire = await loadOrCreateQuestionnaire(enrollment);
+
+  if (
+    Number.isNaN(questionIndex) ||
+    questionIndex !== questionnaire.currentQuestion ||
+    questionnaire.status !== 'in_progress'
+  ) {
+    await ctx.answerCallbackQuery({ text: INVALID_CALLBACK_MESSAGE });
+    await askCurrentQuestion(ctx, questionnaire);
+    return;
+  }
+
+  const question = QUESTIONNAIRE_QUESTIONS[questionIndex];
+  if (!question?.options) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+
+  if (action === 'opt' && question.type === 'single_choice') {
+    const option = question.options[optionIndex];
+    if (!option || Number.isNaN(optionIndex)) {
+      await ctx.answerCallbackQuery({ text: 'Некорректный вариант.' });
+      return;
+    }
+    await ctx.answerCallbackQuery();
+    await commitAnswerAndAdvance(
+      ctx,
+      enrollment,
+      questionnaire,
+      question,
+      questionIndex,
+      option.value,
+      option.label,
+    );
+    return;
+  }
+
+  if (action === 'toggle' && question.type === 'multi_choice') {
+    const option = question.options[optionIndex];
+    if (!option || Number.isNaN(optionIndex)) {
+      await ctx.answerCallbackQuery({ text: 'Некорректный вариант.' });
+      return;
+    }
+
+    const current = getDraftValues(questionnaire, question);
+    const nextValues = toggleMultiValue(question, current, option.value);
+    const answers = {
+      ...questionnaire.answers,
+      [question.id]: { values: nextValues } satisfies MultiDraft,
+    };
+    await questionnaire.update({ answers, lastAnswerAt: new Date() });
+
+    await ctx.editMessageText(formatQuestion(question, questionIndex), {
+      parse_mode: 'Markdown',
+      reply_markup: buildMultiChoiceKeyboard(questionIndex, question, new Set(nextValues)),
+    });
+    await ctx.answerCallbackQuery();
+    return;
+  }
+
+  if (action === 'done' && question.type === 'multi_choice') {
+    const values = getDraftValues(questionnaire, question);
+    if (values.length === 0) {
+      await ctx.answerCallbackQuery({ text: MULTI_MIN_MESSAGE });
+      return;
+    }
+
+    if (optionNeedsFreeText(question, values)) {
+      const answers = {
+        ...questionnaire.answers,
+        [question.id]: { values, awaitingFreeText: true } satisfies MultiDraft,
+      };
+      await questionnaire.update({ answers, lastAnswerAt: new Date() });
+      await ctx.editMessageText(
+        `Вопрос ${questionIndex + 1} из ${TOTAL_QUESTIONNAIRE_QUESTIONS}\n\n${question.text}\n\n✓ ${formatMultiDisplay(question, values)}`,
+        { reply_markup: { inline_keyboard: [] } },
+      );
+      await ctx.answerCallbackQuery();
+      await ctx.reply(FREE_TEXT_PROMPT);
+      return;
+    }
+
+    await ctx.answerCallbackQuery();
+    await commitAnswerAndAdvance(
+      ctx,
+      enrollment,
+      questionnaire,
+      question,
+      questionIndex,
+      values,
+      formatMultiDisplay(question, values),
+    );
+    return;
+  }
+
+  await ctx.answerCallbackQuery();
 }
 
 /** Завершает анкету и переводит enrollment в статус ожидания настроек. */

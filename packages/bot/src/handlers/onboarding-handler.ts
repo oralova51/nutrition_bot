@@ -19,6 +19,13 @@ const AWAITING_LINK_MESSAGE =
   'Чтобы начать работу, мне нужна персональная ссылка-приглашение от администратора вашей студии.';
 
 export async function onboardingMessageHandler(ctx: BotContext): Promise<void> {
+  // grammY вызывает и command-, и message:text-хендлеры для `/start` и др. —
+  // команды обрабатываются отдельно, сюда их не пускаем.
+  const rawText = ctx.message?.text ?? '';
+  if (rawText.startsWith('/')) {
+    return;
+  }
+
   if (!ctx.client) {
     await ctx.reply(AWAITING_LINK_MESSAGE);
     return;
@@ -29,7 +36,7 @@ export async function onboardingMessageHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
-  const text = ctx.message?.text?.trim() ?? '';
+  const text = rawText.trim();
   const status = ctx.enrollment.onboardingStatus;
 
   switch (status) {
