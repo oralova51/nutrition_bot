@@ -5,6 +5,11 @@ import { Bot, GrammyError, HttpError } from 'grammy';
 import type { Logger } from 'pino';
 import { createStartHandler } from './commands/start.js';
 import type { BotContext } from './context.js';
+import {
+  adminTextMiddleware,
+  handleAdminCallback,
+  handleAdminCommand,
+} from './handlers/admin-handler.js';
 import { handleFeedbackCallback } from './handlers/feedback-handler.js';
 import { handleRenewalCallback } from './handlers/renewal-handler.js';
 import {
@@ -24,16 +29,19 @@ export function createBot(token: string, logger: Logger): Bot<BotContext> {
   bot.use(createClientContextMiddleware(logger));
 
   bot.command('start', createStartHandler(logger));
+  bot.command('admin', handleAdminCommand);
   bot.command('settings', handleSettingsCommand);
   bot.command('stop', handleStopCommand);
   bot.command('pause', handlePauseCommand);
 
+  bot.callbackQuery(/^admin:/, handleAdminCallback);
   bot.callbackQuery(/^q:/, handleQuestionnaireButton);
   bot.callbackQuery(/^settings:/, handleSettingsCallback);
   bot.callbackQuery(/^(stop|pause):/, handleOptOutCallback);
   bot.callbackQuery(/^feedback:/, handleFeedbackCallback);
   bot.callbackQuery(/^review:/, handleFeedbackCallback);
   bot.callbackQuery(/^renewal:/, handleRenewalCallback);
+  bot.on('message:text', adminTextMiddleware);
   bot.on('message:text', onboardingMessageHandler);
   bot.on('message:photo', photoMessageHandler);
 

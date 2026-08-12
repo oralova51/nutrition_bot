@@ -5,7 +5,7 @@
 > Пометка `✓` внутри шагов = готова спецификация в `SA/`, **не** реализация кода.
 > Правило: при старте шага ставь `[~]`, при завершении — `[x]`, и синхронизируй статус здесь.
 
-**Текущий фокус:** Этап 12 завершён (инструменты пилота готовы; go/no-go — после реального цикла когорты).
+**Текущий фокус:** Telegram `/admin` (пригласить клиента / создать курс) — готов; этап 12 пилот — go/no-go после цикла когорты.
 
 - [x] Этап 0 — Подготовка (спецификации SA: ERD, Domain, adminAPI готовы; шаг 0.5 ✓)
 - [x] Этап 1 — Каркас проекта (TS/ESLint/Prettier, БД, модели Client/Course/Enrollment/Notification/Message, логирование, health-check)
@@ -17,7 +17,7 @@
 - [x] Этап 6 — Неактивность и opt-out (ФТ-9..ФТ-12)
 - [x] Этап 7 — Завершение курса (Report, Feedback, ветки оценок)
 - [x] Этап 8 — Продление курса (ФТ-18)
-- [x] Этап 9 — Панели управления (9.4–9.9 и 9.12–9.16 реализованы по SA/stage9-dashboards.md; 9.2, 9.3, 9.10 уже были готовы; UI — post-MVP)
+- [x] Этап 9 — Панели управления (9.3 Telegram `/admin` для курса/приглашения; 9.4–9.9 и 9.12–9.16 по SA/stage9-dashboards.md; 9.2, 9.10 уже были готовы; web-UI — post-MVP)
 - [x] Этап 10 — Ошибки и edge cases (ФТ-21, ФТ-22) — код и документация реализованы, см. SA/stage10-errors.md
 - [x] Этап 11 — Non-functional (шифрование, хранение, мониторинг, AIModelLog) — завершён
 - [x] Этап 12 — Пилот (seed, чек-листы CJM, метрики, go/no-go)
@@ -458,9 +458,11 @@ Auth для admin API — ✓ MVP: Bearer token (adminAPI.md §1); post-MVP: JWT
 9.2
 Список клиентов: active / inactive — ✓ adminAPI.md §4.3 `GET /admin/clients`
 > Эндпоинт реализован кодом на шаге 3.6 (`packages/api/src/services/clients.ts`); UI-панель (собственно этап 9) не начата.
-9.3
+9.3 [x]
 Генерация ссылки из UI — ✓ adminAPI.md §4.4 (UI post-MVP; MVP — Postman §8)
-> API реализовано на 3.2/3.5; UI — post-MVP, не начато.
+> API реализовано на 3.2/3.5. Для пилота вместо web-UI: команда `/admin` в боте
+> (`packages/bot` — allowlist `ADMIN_ALERT_TELEGRAM_ID`): «Создать курс» (дни → авто-имя)
+> и «Пригласить клиента» (выбор курса → имя → Client+Enrollment+deep link). Web-UI — post-MVP.
 9.4 [x]
 Просмотр дневника (анонимизированно)
 > Реализовано: `GET /admin/enrollments/:id/diary` в `packages/api/src/services/dashboards.ts` + `routes/dashboards.ts`. Фильтры по дате и статусу, без персональных данных в ответе.
