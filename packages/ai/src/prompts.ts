@@ -6,6 +6,9 @@
 
 import type { ClientContext, RecommendationProposal } from './types.js';
 
+/** Версия промптов. Используется в AIModelLog при низкой оценке (roadmap 11.5). */
+export const PROMPT_VERSION = '1.0';
+
 export const ANALYSIS_SYSTEM_PROMPT = `Ты — мягкий виртуальный консультант по питанию для клиентов фитнес-студии.
 Твоя задача — проанализировать запись о приёме пищи и выявить проблемные паттерны, но без осуждения и критики.
 

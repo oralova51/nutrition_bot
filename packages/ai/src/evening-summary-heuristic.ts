@@ -99,7 +99,8 @@ export function buildHeuristicEveningSummary(
     `За день отмечено ${dayEntries.length} приём(а/ов) пищи — это уже хорошая база для анализа.`,
   ];
   if (hasProtein) enough.push('В рационе был белок — это поддерживает сытость и восстановление.');
-  if (hasVeggies) enough.push('Овощи/клетчатка сегодня тоже были — отличная поддержка пищеварения.');
+  if (hasVeggies)
+    enough.push('Овощи/клетчатка сегодня тоже были — отличная поддержка пищеварения.');
   if (hasWater) enough.push('Жидкость в записях отмечена — так проще держать водный баланс.');
 
   const missing: string[] = [];

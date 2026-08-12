@@ -23,7 +23,11 @@ import {
 } from '@nutrition-bot/shared';
 import { createAIEngine } from './factory.js';
 import { logger } from './logger.js';
-import type { DiaryAnalysisInput, RecommendationPriority, RecommendationProposal } from './types.js';
+import type {
+  DiaryAnalysisInput,
+  RecommendationPriority,
+  RecommendationProposal,
+} from './types.js';
 
 const MAX_DAILY_RECOMMENDATIONS = 3;
 
@@ -201,12 +205,8 @@ async function countRecommendationsToday(clientId: string): Promise<number> {
   });
 }
 
-function sortProposalsByPriority(
-  proposals: RecommendationProposal[],
-): RecommendationProposal[] {
-  return [...proposals].sort(
-    (a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority],
-  );
+function sortProposalsByPriority(proposals: RecommendationProposal[]): RecommendationProposal[] {
+  return [...proposals].sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]);
 }
 
 async function sendRecommendationMessage(

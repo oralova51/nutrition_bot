@@ -1,5 +1,6 @@
 import type { Sequelize } from 'sequelize';
 import { getSequelize } from '../db/sequelize.js';
+import { initAIModelLogModel } from './ai-model-log.js';
 import { Client, initClientModel } from './client.js';
 import { ClientEnrollment, initClientEnrollmentModel } from './client-enrollment.js';
 import { Course, initCourseModel } from './course.js';
@@ -17,6 +18,7 @@ import { Recommendation, initRecommendationModel } from './recommendation.js';
 import { Report, initReportModel } from './report.js';
 import { RenewalOffer, initRenewalOfferModel } from './renewal-offer.js';
 
+export { AIModelLog } from './ai-model-log.js';
 export { Client } from './client.js';
 export {
   ClientEnrollment,
@@ -178,6 +180,7 @@ export function initModels(sequelize: Sequelize): void {
   initReportModel(sequelize);
   initRenewalOfferModel(sequelize);
   initFeedbackModel(sequelize);
+  initAIModelLogModel(sequelize);
   initAssociations();
   modelsInitialized = true;
 }

@@ -9,6 +9,7 @@ import {
   type InferCreationAttributes,
   type Sequelize,
 } from 'sequelize';
+import { decryptJson, encryptJson } from '../encryption/field.js';
 
 export const QUESTIONNAIRE_STATUSES = ['in_progress', 'completed'] as const;
 
@@ -50,6 +51,16 @@ export function initQuestionnaireModel(sequelize: Sequelize): typeof Questionnai
         type: DataTypes.JSONB,
         allowNull: false,
         defaultValue: {},
+        get() {
+          const raw = this.getDataValue('answers');
+          return decryptJson(raw) ?? {};
+        },
+        set(value: Record<string, unknown> | null) {
+          this.setDataValue(
+            'answers',
+            encryptJson(value ?? {}) as unknown as Record<string, unknown>,
+          );
+        },
       },
       currentQuestion: {
         type: DataTypes.INTEGER,
@@ -76,6 +87,20 @@ export function initQuestionnaireModel(sequelize: Sequelize): typeof Questionnai
       analysisResult: {
         type: DataTypes.JSONB,
         allowNull: true,
+        get() {
+          const raw = this.getDataValue('analysisResult');
+          return decryptJson(raw) ?? null;
+        },
+        set(value: Record<string, unknown> | null) {
+          if (value === null || value === undefined) {
+            this.setDataValue('analysisResult', null);
+            return;
+          }
+          this.setDataValue(
+            'analysisResult',
+            encryptJson(value) as unknown as Record<string, unknown>,
+          );
+        },
       },
     },
     {

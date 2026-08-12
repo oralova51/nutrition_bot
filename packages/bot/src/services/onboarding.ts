@@ -3,6 +3,7 @@
 // и переход к настройкам уведомлений (ФТ-3). Варианты — через inline-кнопки (SA/adminAPI.md §6.4).
 
 import {
+  Client,
   ClientEnrollment,
   Questionnaire,
   QUESTIONNAIRE_QUESTIONS,
@@ -13,6 +14,9 @@ import {
 import { InlineKeyboard } from 'grammy';
 import { startSettingsWizard } from '../handlers/settings-handler.js';
 import type { BotContext } from '../context.js';
+
+/** id вопроса «Как к вам обращаться?» — ответ должен попасть в Client.firstName. */
+const PREFERRED_NAME_QUESTION_ID = 'name';
 
 const WELCOME_MESSAGE =
   'Здравствуйте! Я — ваш виртуальный консультант по питанию 🤍\n\n' +
@@ -44,11 +48,7 @@ interface MultiDraft {
 }
 
 function isMultiDraft(value: unknown): value is MultiDraft {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    Array.isArray((value as MultiDraft).values)
-  );
+  return typeof value === 'object' && value !== null && Array.isArray((value as MultiDraft).values);
 }
 
 function formatQuestion(question: QuestionnaireQuestion, index: number): string {
@@ -62,7 +62,10 @@ function formatQuestion(question: QuestionnaireQuestion, index: number): string 
   return text;
 }
 
-function buildSingleChoiceKeyboard(questionIndex: number, question: QuestionnaireQuestion): InlineKeyboard {
+function buildSingleChoiceKeyboard(
+  questionIndex: number,
+  question: QuestionnaireQuestion,
+): InlineKeyboard {
   const keyboard = new InlineKeyboard();
   for (let i = 0; i < (question.options?.length ?? 0); i++) {
     const option = question.options?.[i];
@@ -125,18 +128,23 @@ function getDraftValues(questionnaire: Questionnaire, question: QuestionnaireQue
   return [];
 }
 
-function isAwaitingFreeText(questionnaire: Questionnaire, question: QuestionnaireQuestion): boolean {
+function isAwaitingFreeText(
+  questionnaire: Questionnaire,
+  question: QuestionnaireQuestion,
+): boolean {
   const raw = questionnaire.answers[question.id];
   return isMultiDraft(raw) && raw.awaitingFreeText === true;
 }
 
 function optionNeedsFreeText(question: QuestionnaireQuestion, values: string[]): boolean {
-  return (question.options ?? []).some(
-    (opt) => opt.allowFreeText && values.includes(opt.value),
-  );
+  return (question.options ?? []).some((opt) => opt.allowFreeText && values.includes(opt.value));
 }
 
-function formatMultiDisplay(question: QuestionnaireQuestion, values: string[], freeText?: string): string {
+function formatMultiDisplay(
+  question: QuestionnaireQuestion,
+  values: string[],
+  freeText?: string,
+): string {
   const labels = values.map((value) => {
     const option = question.options?.find((opt) => opt.value === value);
     if (option?.allowFreeText && freeText) {
@@ -147,7 +155,11 @@ function formatMultiDisplay(question: QuestionnaireQuestion, values: string[], f
   return labels.join(', ');
 }
 
-function toggleMultiValue(question: QuestionnaireQuestion, current: string[], optionValue: string): string[] {
+function toggleMultiValue(
+  question: QuestionnaireQuestion,
+  current: string[],
+  optionValue: string,
+): string[] {
   const isSelected = current.includes(optionValue);
   let next = isSelected ? current.filter((v) => v !== optionValue) : [...current, optionValue];
 
@@ -178,6 +190,30 @@ async function loadOrCreateQuestionnaire(enrollment: ClientEnrollment): Promise<
   });
 }
 
+/**
+ * Синхронизирует ответ «Как к вам обращаться?» с Client.firstName.
+ * Нужно и при первом, и при повторном онбординге: иначе AI/сводки продолжают
+ * обращаться по старому имени из предыдущего курса.
+ */
+async function syncPreferredNameToClient(
+  ctx: BotContext,
+  enrollment: ClientEnrollment,
+  preferredName: string,
+): Promise<void> {
+  const trimmed = preferredName.trim();
+  if (!trimmed) return;
+
+  if (ctx.client && ctx.client.id === enrollment.clientId) {
+    await ctx.client.update({ firstName: trimmed });
+    return;
+  }
+
+  const client = await Client.findByPk(enrollment.clientId);
+  if (client) {
+    await client.update({ firstName: trimmed });
+  }
+}
+
 async function askCurrentQuestion(ctx: BotContext, questionnaire: Questionnaire): Promise<void> {
   const questionIndex = questionnaire.currentQuestion;
   const question = QUESTIONNAIRE_QUESTIONS[questionIndex];
@@ -190,7 +226,8 @@ async function askCurrentQuestion(ctx: BotContext, questionnaire: Questionnaire)
     return;
   }
 
-  const draftValues = question.type === 'multi_choice' ? getDraftValues(questionnaire, question) : [];
+  const draftValues =
+    question.type === 'multi_choice' ? getDraftValues(questionnaire, question) : [];
   const replyMarkup = buildQuestionKeyboard(question, questionIndex, draftValues);
 
   await ctx.reply(formatQuestion(question, questionIndex), {
@@ -358,6 +395,10 @@ export async function handleQuestionnaireAnswer(
     await ctx.reply(EMPTY_ANSWER_MESSAGE);
     await askCurrentQuestion(ctx, questionnaire);
     return;
+  }
+
+  if (question.id === PREFERRED_NAME_QUESTION_ID && typeof parsed.value === 'string') {
+    await syncPreferredNameToClient(ctx, enrollment, parsed.value);
   }
 
   const answers = { ...questionnaire.answers, [question.id]: parsed.value };

@@ -123,11 +123,7 @@ export async function buildAndSendEveningSummary(
   return { sent: true, skipped: false, reportId: report.id };
 }
 
-async function hasEveningSummaryToday(
-  clientId: string,
-  start: Date,
-  end: Date,
-): Promise<boolean> {
+async function hasEveningSummaryToday(clientId: string, start: Date, end: Date): Promise<boolean> {
   const count = await Message.count({
     where: {
       clientId,

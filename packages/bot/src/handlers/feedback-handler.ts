@@ -3,6 +3,7 @@
 
 import type { CallbackQueryContext } from 'grammy';
 import { InlineKeyboard } from 'grammy';
+import { recordPromptUpdateFromFeedback } from '@nutrition-bot/ai';
 import { createLogger, Feedback, Message, sendTelegramMessage } from '@nutrition-bot/shared';
 import type { BotContext } from '../context.js';
 import { resolveReviewUrls } from '../config.js';
@@ -103,17 +104,26 @@ async function handleStarRating(
     return;
   }
 
-  await saveRating(ctx.client.id, rating);
+  const client = ctx.client;
+  await saveRating(client.id, rating);
 
   if (rating <= 3) {
     await ctx.editMessageText(THANKS_LOW_RATING_MESSAGE, {
       reply_markup: buildCommentPromptKeyboard(),
     });
+    void recordPromptUpdateFromFeedback({
+      rating,
+      comment: null,
+      clientId: client.id,
+      source: 'course_final',
+    }).catch((err: unknown) => {
+      logger.error({ err, clientId: client.id }, 'Ошибка записи AIModelLog для низкой оценки');
+    });
   } else {
     await ctx.editMessageText(THANKS_HIGH_RATING_MESSAGE, {
       reply_markup: buildReviewKeyboard(),
     });
-    await sendBonusLogMessage(ctx.client.id);
+    await sendBonusLogMessage(client.id);
   }
 
   await ctx.answerCallbackQuery({ text: 'Спасибо за оценку!' });
@@ -125,10 +135,22 @@ async function handleSkipComment(ctx: CallbackQueryContext<BotContext>): Promise
     return;
   }
 
-  const feedback = await findLastCourseFeedback(ctx.client.id);
+  const client = ctx.client;
+  const feedback = await findLastCourseFeedback(client.id);
   if (feedback && feedback.rating <= 3) {
     await feedback.update({ comment: '' });
     await notifyAdminLowRating(feedback);
+    void recordPromptUpdateFromFeedback({
+      rating: feedback.rating,
+      comment: '',
+      clientId: client.id,
+      source: 'course_final',
+    }).catch((err: unknown) => {
+      logger.error(
+        { err, clientId: client.id },
+        'Ошибка записи AIModelLog для пропущенного комментария',
+      );
+    });
   }
 
   await ctx.editMessageText('Хорошо, если передумаешь — напиши комментарий позже.');
@@ -228,22 +250,34 @@ export async function handleFeedbackCallback(ctx: CallbackQueryContext<BotContex
  */
 export async function handleFeedbackComment(ctx: BotContext, text: string): Promise<boolean> {
   if (!ctx.client) return false;
+  const client = ctx.client;
 
   try {
-    const feedback = await findLastCourseFeedback(ctx.client.id);
+    const feedback = await findLastCourseFeedback(client.id);
     if (!feedback || feedback.rating > 3 || feedback.comment !== null) {
       return false;
     }
 
     await feedback.update({ comment: text });
     await sendTelegramMessage({
-      telegramId: ctx.client.telegramId!,
+      telegramId: client.telegramId!,
       text: COMMENT_SAVED_MESSAGE,
-      clientId: ctx.client.id,
+      clientId: client.id,
       type: 'feedback',
       category: 'transactional',
     });
     await notifyAdminLowRating(feedback);
+    void recordPromptUpdateFromFeedback({
+      rating: feedback.rating,
+      comment: text,
+      clientId: client.id,
+      source: 'course_final',
+    }).catch((err: unknown) => {
+      logger.error(
+        { err, clientId: client.id },
+        'Ошибка записи AIModelLog для комментария feedback',
+      );
+    });
     return true;
   } catch (err) {
     logger.error(

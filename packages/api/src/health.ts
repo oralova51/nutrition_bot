@@ -7,6 +7,7 @@ export interface HealthResponse {
   status: 'ok' | 'error';
   version: string;
   database: 'connected' | 'disconnected';
+  uptimeSeconds: number;
 }
 
 export async function getHealthStatus(): Promise<HealthResponse> {
@@ -16,12 +17,14 @@ export async function getHealthStatus(): Promise<HealthResponse> {
       status: 'ok',
       version: API_VERSION,
       database: 'connected',
+      uptimeSeconds: Math.floor(process.uptime()),
     };
   } catch {
     return {
       status: 'error',
       version: API_VERSION,
       database: 'disconnected',
+      uptimeSeconds: Math.floor(process.uptime()),
     };
   }
 }

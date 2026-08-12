@@ -8,10 +8,9 @@ const KALININGRAD = 'Europe/Kaliningrad';
 const MOSCOW = 'Europe/Moscow';
 
 export const up: Migration = async ({ context: queryInterface }) => {
-  await queryInterface.sequelize.query(
-    `UPDATE notification_settings SET timezone = :timezone`,
-    { replacements: { timezone: KALININGRAD } },
-  );
+  await queryInterface.sequelize.query(`UPDATE notification_settings SET timezone = :timezone`, {
+    replacements: { timezone: KALININGRAD },
+  });
 
   await queryInterface.changeColumn('notification_settings', 'timezone', {
     type: DataTypes.STRING(64),
@@ -27,8 +26,7 @@ export const down: Migration = async ({ context: queryInterface }) => {
     defaultValue: MOSCOW,
   });
 
-  await queryInterface.sequelize.query(
-    `UPDATE notification_settings SET timezone = :timezone`,
-    { replacements: { timezone: MOSCOW } },
-  );
+  await queryInterface.sequelize.query(`UPDATE notification_settings SET timezone = :timezone`, {
+    replacements: { timezone: MOSCOW },
+  });
 };

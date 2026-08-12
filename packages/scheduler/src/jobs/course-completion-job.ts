@@ -12,10 +12,7 @@ export async function runCourseCompletionJob(
   options: SchedulerJobOptions = {},
 ): Promise<SchedulerJobResult> {
   const force = options.force === true;
-  logger.info(
-    { force, clientId: options.clientId ?? null },
-    'Старт job завершения курсов',
-  );
+  logger.info({ force, clientId: options.clientId ?? null }, 'Старт job завершения курсов');
 
   const outcome = await findAndCompleteCourses(logger, {
     force,

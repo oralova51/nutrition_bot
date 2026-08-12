@@ -5,7 +5,7 @@
 > Пометка `✓` внутри шагов = готова спецификация в `SA/`, **не** реализация кода.
 > Правило: при старте шага ставь `[~]`, при завершении — `[x]`, и синхронизируй статус здесь.
 
-**Текущий фокус:** Этап 11 — Non-functional (параллельно, но до пилота).
+**Текущий фокус:** Этап 11 завершён; следующий — Этап 12 — Пилот.
 
 - [x] Этап 0 — Подготовка (спецификации SA: ERD, Domain, adminAPI готовы; шаг 0.5 ✓)
 - [x] Этап 1 — Каркас проекта (TS/ESLint/Prettier, БД, модели Client/Course/Enrollment/Notification/Message, логирование, health-check)
@@ -19,7 +19,7 @@
 - [x] Этап 8 — Продление курса (ФТ-18)
 - [x] Этап 9 — Панели управления (9.4–9.9 и 9.12–9.16 реализованы по SA/stage9-dashboards.md; 9.2, 9.3, 9.10 уже были готовы; UI — post-MVP)
 - [x] Этап 10 — Ошибки и edge cases (ФТ-21, ФТ-22) — код и документация реализованы, см. SA/stage10-errors.md
-- [ ] Этап 11 — Non-functional (шифрование, хранение, мониторинг, AIModelLog)
+- [x] Этап 11 — Non-functional (шифрование, хранение, мониторинг, AIModelLog) — завершён
 - [ ] Этап 12 — Пилот (seed, чек-листы CJM, метрики, go/no-go)
 
 ---
@@ -537,18 +537,24 @@ nonFR §6
 > Реализован job `packages/scheduler/src/jobs/delivery-failure-alert-job.ts`: считает `delivery_failed` за окно `MASS_FAILURE_WINDOW_MINUTES` и алертит администратору при превышении `MASS_FAILURE_THRESHOLD`, не чаще `MASS_FAILURE_ALERT_INTERVAL_MINUTES`.
 Этап 11. Non-functional (параллельно, но до пилота)
 #	Шаг
-11.1
+11.1 [x]
 Шифрование фото и анкет at rest
-11.2
+> Реализовано AES-256-GCM на уровне приложения: `packages/shared/src/encryption`. Поля `NutritionDiary.photoRef` и `Questionnaire.answers`/`analysisResult` шифруются автоматически через getter/setter. `ENCRYPTION_KEY` добавлена в `.env.example`; миграция `20260812100000` расширила `photo_ref` до TEXT. Legacy-данные читаются без изменений.
+11.2 [x]
 Политика хранения: enrollment + 12 месяцев
-11.3
+> Реализован job `packages/scheduler/src/jobs/data-retention-job.ts`: ежедневно в 02:00 находит клиентов, у которых последний enrollment завершился более `DATA_RETENTION_MONTHS` (default 12) назад, и полностью удаляет их данные. Для удаления используется общий сервис `packages/shared/src/services/data-deletion.ts`. Ручной запуск: `POST /internal/jobs/data-retention?force=true`.
+11.3 [x]
 Endpoint удаления данных по запросу клиента (152-ФЗ)
-11.4
+> Реализован `DELETE /admin/clients/:clientId` с опциональным `reason` в теле. Удаляет клиента и все связанные записи через `deleteClientData` из `packages/shared/src/services/data-deletion.ts`. Требует admin-auth.
+11.4 [x]
 Мониторинг uptime / алерты
-11.5
+> Health endpoint обогащён `uptimeSeconds`. Scheduler job `packages/scheduler/src/jobs/uptime-monitor-job.ts` каждые 5 минут проверяет `API_HEALTH_URL` и шлёт Telegram-алерт администратору при недоступности или `database: disconnected`. URL добавлен в `.env.example`.
+11.5 [x]
 Модель AIModelLog + процесс обновления промпта по низким Feedback
-11.6
+> Добавлена модель/таблица `AIModelLog` с полями version, updateReason, analystComment. Миграция `20260812110000`. Версия промптов `PROMPT_VERSION` в `packages/ai/src/prompts.ts`. При оценке 1–3 звезды в `feedback-handler.ts` создаётся запись `AIModelLog` для последующего ручного пересмотра промптов.
+11.6 [x]
 Нагрузочный тест на N клиентов (значение N — на пилоте)
+> Добавлен скрипт `scripts/load-test.ts`: создаёт N клиентов с enrollment'ами и записывает в `NutritionDiary`, измеряя p95 и RPS. Параметры `LOAD_TEST_CLIENTS` и `LOAD_TEST_CONCURRENCY` (env). Запуск: `npx tsx scripts/load-test.ts`.
 Этап 12. Пилот
 #	Шаг
 12.1

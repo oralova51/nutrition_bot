@@ -4,6 +4,7 @@ export * from './factory.js';
 export * from './mock-engine.js';
 export * from './openai-compatible-engine.js';
 export * from './prompts.js';
+export * from './feedback-learning.js';
 export * from './diary-processor.js';
 export * from './evening-summary.js';
 export * from './evening-summary-heuristic.js';

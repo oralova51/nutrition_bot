@@ -5,6 +5,7 @@ import { URL } from 'node:url';
 import type { Logger } from 'pino';
 import { runCourseCompletionJob } from './jobs/course-completion-job.js';
 import { runDailyReminderJob } from './jobs/daily-reminder.js';
+import { runDataRetentionJob } from './jobs/data-retention-job.js';
 import { runEveningReminderJob } from './jobs/evening-reminder-job.js';
 import { runEveningSummaryJob } from './jobs/evening-summary-job.js';
 import type { SchedulerJobOptions, SchedulerJobResult } from './jobs/types.js';
@@ -19,6 +20,7 @@ const JOB_ROUTES: Record<string, JobRunner> = {
   '/internal/jobs/evening-reminder': runEveningReminderJob,
   '/internal/jobs/evening-summary': runEveningSummaryJob,
   '/internal/jobs/course-completion': runCourseCompletionJob,
+  '/internal/jobs/data-retention': runDataRetentionJob,
 };
 
 function sendJson(res: ServerResponse, statusCode: number, body: unknown): void {
@@ -91,10 +93,7 @@ function parseJobOptions(
 ): SchedulerJobOptions {
   const forceFromQuery = query.get('force');
   const forceFromBody = body.force;
-  const force =
-    forceFromBody === true ||
-    forceFromQuery === 'true' ||
-    forceFromQuery === '1';
+  const force = forceFromBody === true || forceFromQuery === 'true' || forceFromQuery === '1';
 
   const clientIdRaw = body.clientId ?? query.get('clientId');
   const clientId =

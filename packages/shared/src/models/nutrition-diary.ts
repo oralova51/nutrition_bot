@@ -10,6 +10,12 @@ import {
   type InferCreationAttributes,
   type Sequelize,
 } from 'sequelize';
+import {
+  decryptString,
+  encryptString,
+  parseEncrypted,
+  serializeEncrypted,
+} from '../encryption/field.js';
 
 export const NUTRITION_DIARY_STATUSES = ['filled', 'pending', 'needs_clarification'] as const;
 
@@ -67,8 +73,20 @@ export function initNutritionDiaryModel(sequelize: Sequelize): typeof NutritionD
         defaultValue: false,
       },
       photoRef: {
-        type: DataTypes.STRING(512),
+        type: DataTypes.TEXT,
         allowNull: true,
+        get() {
+          const raw = this.getDataValue('photoRef');
+          const parsed = parseEncrypted(raw);
+          return decryptString(parsed);
+        },
+        set(value: string | null) {
+          if (value === null || value === undefined) {
+            this.setDataValue('photoRef', value);
+            return;
+          }
+          this.setDataValue('photoRef', serializeEncrypted(encryptString(value)));
+        },
       },
       status: {
         type: DataTypes.STRING(20),

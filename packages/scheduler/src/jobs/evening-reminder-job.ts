@@ -122,10 +122,7 @@ export async function runEveningReminderJob(
         category: 'optional',
       });
       result.sent += 1;
-      logger.info(
-        { clientId: client.id, timezone, force },
-        'Вечернее напоминание отправлено',
-      );
+      logger.info({ clientId: client.id, timezone, force }, 'Вечернее напоминание отправлено');
     } catch (err) {
       result.errors += 1;
       logger.error({ clientId: client.id, err }, 'Не удалось отправить вечернее напоминание');

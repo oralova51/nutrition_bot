@@ -1,6 +1,10 @@
 // Роуты клиентов — adminAPI.md §4.3.
 
-import { CLIENT_ENROLLMENT_STATUSES, ONBOARDING_STATUSES } from '@nutrition-bot/shared';
+import {
+  CLIENT_ENROLLMENT_STATUSES,
+  deleteClientData,
+  ONBOARDING_STATUSES,
+} from '@nutrition-bot/shared';
 import { readJsonBody, sendJson } from '../http.js';
 import type { RouteContext, RouteDefinition } from '../router.js';
 import {
@@ -88,6 +92,24 @@ export function createClientRoutes(botUsername: string): RouteDefinition[] {
         const clientId = requireClientId(params);
         const detail = await getClientDetail(clientId);
         sendJson(res, 200, detail);
+      },
+    },
+    {
+      method: 'DELETE',
+      pattern: '/admin/clients/:clientId',
+      requiresAdminAuth: true,
+      handler: async ({ req, res, params }: RouteContext): Promise<void> => {
+        const clientId = requireClientId(params);
+        const body = requireObjectBody(await readJsonBody(req));
+        const reason = optionalString(body, 'reason');
+
+        await deleteClientData(clientId);
+
+        sendJson(res, 200, {
+          deleted: true,
+          clientId,
+          reason: reason ?? null,
+        });
       },
     },
     {

@@ -167,8 +167,7 @@ export class OpenAICompatibleAIEngine implements AIEngine {
   async generateEveningSummary(input: EveningSummaryInput): Promise<EveningSummaryResult> {
     const entriesSummary = input.dayEntries
       .map((entry, index) => {
-        const calories =
-          entry.approxCalories !== null ? `, ~${entry.approxCalories} ккал` : '';
+        const calories = entry.approxCalories !== null ? `, ~${entry.approxCalories} ккал` : '';
         const photo = entry.hasPhoto ? ', есть фото' : '';
         return `${index + 1}. ${entry.description ?? '(без описания)'}${calories}${photo}`;
       })
@@ -287,9 +286,7 @@ export class OpenAICompatibleAIEngine implements AIEngine {
     const enough = Array.isArray(parsed.enough) ? parsed.enough.map(String) : [];
     const missing = Array.isArray(parsed.missing) ? parsed.missing.map(String) : [];
     const toAdd = Array.isArray(parsed.toAdd) ? parsed.toAdd.map(String) : [];
-    const improvements = Array.isArray(parsed.improvements)
-      ? parsed.improvements.map(String)
-      : [];
+    const improvements = Array.isArray(parsed.improvements) ? parsed.improvements.map(String) : [];
 
     let summaryText =
       typeof parsed.summaryText === 'string' && parsed.summaryText.trim().length > 40

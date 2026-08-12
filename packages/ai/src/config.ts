@@ -41,7 +41,7 @@ export function resolveAIConfig(): AIConfig {
     apiKey: process.env.AI_API_KEY ?? '',
     baseURL: process.env.AI_BASE_URL ?? 'http://localhost:11434/v1',
     model: process.env.AI_MODEL ?? 'llama3.1',
-    maxTokens: Number.parseInt(process.env.AI_MAX_TOKENS ?? '512', 10),
+    maxTokens: Number.parseInt(process.env.AI_MAX_TOKENS ?? '4096', 10),
     eveningSummaryMaxTokens: Number.parseInt(
       process.env.AI_EVENING_SUMMARY_MAX_TOKENS ?? '4096',
       10,

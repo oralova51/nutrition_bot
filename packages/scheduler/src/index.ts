@@ -16,12 +16,14 @@ import { runDailyReminderJob } from './jobs/daily-reminder.js';
 import { runEveningReminderJob } from './jobs/evening-reminder-job.js';
 import { runEveningSummaryJob } from './jobs/evening-summary-job.js';
 import { runCourseCompletionJob } from './jobs/course-completion-job.js';
+import { runDataRetentionJob } from './jobs/data-retention-job.js';
 import { runDeliveryFailureAlertJob } from './jobs/delivery-failure-alert-job.js';
 import { runInactivityDeactivationJob } from './jobs/inactivity-deactivation-job.js';
 import { runInactivityWarningJob } from './jobs/inactivity-warning-job.js';
 import { runPendingDiaryJob } from './jobs/pending-diary-job.js';
 import { runRecommendationDeliveryJob } from './jobs/recommendation-delivery-job.js';
 import { runQuestionnaireReminderJob } from './jobs/questionnaire-reminder.js';
+import { runUptimeMonitorJob } from './jobs/uptime-monitor-job.js';
 
 export const SERVICE_NAME = 'scheduler';
 export const logger = createLogger(SERVICE_NAME);
@@ -111,6 +113,20 @@ async function main(): Promise<void> {
   schedule('*/10 * * * *', () => {
     void runDeliveryFailureAlertJob(logger).catch((err: unknown) => {
       logger.error({ err }, 'Алерт массовых сбоев: необработанная ошибка job');
+    });
+  });
+
+  // Политика хранения данных (roadmap 11.2): ежедневная очистка по сроку enrollment + 12 мес.
+  schedule('0 2 * * *', () => {
+    void runDataRetentionJob(logger).catch((err: unknown) => {
+      logger.error({ err }, 'Политика хранения: необработанная ошибка job');
+    });
+  });
+
+  // Мониторинг uptime API (roadmap 11.4): каждые 5 минут проверяем health endpoint.
+  schedule('*/5 * * * *', () => {
+    void runUptimeMonitorJob(logger).catch((err: unknown) => {
+      logger.error({ err }, 'Мониторинг uptime: необработанная ошибка job');
     });
   });
 
