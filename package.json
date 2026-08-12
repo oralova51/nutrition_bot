@@ -28,6 +28,8 @@
     "db:migrate:status": "tsx scripts/migrate.ts status",
     "db:reset:soft": "tsx scripts/reset-db.ts soft",
     "db:reset:hard": "tsx scripts/reset-db.ts hard",
+    "db:seed:pilot": "tsx scripts/seed-pilot.ts",
+    "pilot:metrics": "tsx scripts/pilot-metrics.ts",
     "dev:api": "npm run dev -w @nutrition-bot/api",
     "start:api": "npm run build -w @nutrition-bot/api && npm run start -w @nutrition-bot/api",
     "dev:bot": "npm run dev -w @nutrition-bot/bot",
