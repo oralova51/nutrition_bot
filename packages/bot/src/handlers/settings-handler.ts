@@ -26,6 +26,19 @@ const MIN_TYPES_MESSAGE = 'Выберите хотя бы один тип уве
 const WIZARD_DONE_SUFFIX =
   'Теперь я буду присылать напоминания по вашему расписанию (время Калининграда). Если захотите что-то поменять — отправьте /settings.';
 
+/** Краткая памятка после онбординга: не ждать напоминаний + как писать в дневник. */
+const DIARY_QUICK_GUIDE =
+  '📌 Краткая памятка\n\n' +
+  '1. Уведомления придут по расписанию — но лучше записывать съеденное сразу после приёма пищи. Так легче ничего не забыть. Не ждите напоминания, пишите сразу.\n\n' +
+  '2. Как писать в дневник:\n' +
+  '• что съели\n' +
+  '• сколько (примерно ок)\n' +
+  '• характер: «ПП» или «с сахаром / жареное» — чтобы была понятна калорийность\n\n' +
+  'Можно одним сообщением или несколькими:\n' +
+  '«выпил колу 0,5 л» + «съел шоколадку 100 г»\n' +
+  'или: «выпил колу 0,5 л и съел шоколадку 100 г»\n\n' +
+  'Маленький шаг сегодня важнее идеального плана завтра. Напишите, что уже съели — и мы начнём 🙂';
+
 export async function handleSettingsCommand(ctx: CommandContext<BotContext>): Promise<void> {
   if (!ctx.client) {
     await ctx.reply(
@@ -116,6 +129,8 @@ export async function handleSettingsCallback(ctx: CallbackQueryContext<BotContex
           `Настройки сохранены 🎉\n\n${formatSettingsMessage(settings)}\n\n${WIZARD_DONE_SUFFIX}`,
           { reply_markup: { inline_keyboard: [] } },
         );
+        // Отдельным сообщением — чтобы клиент сразу понял, как вести себя дальше.
+        await ctx.reply(DIARY_QUICK_GUIDE);
       } else {
         await ctx.editMessageText(formatSettingsMessage(settings), {
           reply_markup: buildSettingsKeyboard(),
