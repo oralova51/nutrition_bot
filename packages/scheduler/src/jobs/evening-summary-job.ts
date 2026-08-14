@@ -2,7 +2,6 @@
 // В 21:00 по TZ клиента анализирует filled-записи дня и отправляет soft summary.
 // force=true — для ручного теста: игнорирует 21:00 и дневной дедуп.
 
-import { fromZonedTime, format, toZonedTime } from 'date-fns-tz';
 import { Op } from 'sequelize';
 import { buildAndSendEveningSummary } from '@nutrition-bot/ai';
 import {
@@ -11,6 +10,10 @@ import {
   DEFAULT_TIMEZONE,
   NotificationSettings,
   NutritionDiary,
+  formatZonedDate,
+  formatZonedTime,
+  getZonedDayRange,
+  isLocalTimeOnOrAfter,
 } from '@nutrition-bot/shared';
 import type { Logger } from 'pino';
 import type { SchedulerJobOptions, SchedulerJobResult } from './types.js';
@@ -80,15 +83,18 @@ export async function runEveningSummaryJob(
     }
 
     const timezone = DEFAULT_TIMEZONE;
-    const zonedNow = toZonedTime(new Date(), timezone);
-    const currentTime = format(zonedNow, 'HH:mm', { timeZone: timezone });
-    if (!force && currentTime !== '21:00') {
+    if (!force && !isLocalTimeOnOrAfter(new Date(), timezone, '21:00')) {
       result.skipped += 1;
+      logger.debug(
+        { clientId: client.id, localTime: formatZonedTime(new Date(), timezone) },
+        'Вечерняя сводка: слот 21:00 ещё не наступил',
+      );
       continue;
     }
 
-    const localDate = format(zonedNow, 'yyyy-MM-dd', { timeZone: timezone });
-    const dayRange = getZonedDayRange(new Date(), timezone);
+    const now = new Date();
+    const localDate = formatZonedDate(now, timezone);
+    const dayRange = getZonedDayRange(now, timezone);
 
     try {
       const dayEntries = await NutritionDiary.findAll({
@@ -126,15 +132,4 @@ export async function runEveningSummaryJob(
   }
 
   return result;
-}
-
-function getZonedDayRange(date: Date, timezone: string): { start: Date; end: Date } {
-  const zonedNow = toZonedTime(date, timezone);
-  const dateString = format(zonedNow, 'yyyy-MM-dd', { timeZone: timezone });
-  const startLocal = new Date(`${dateString}T00:00:00`);
-  const endLocal = new Date(`${dateString}T23:59:59.999`);
-  return {
-    start: fromZonedTime(startLocal, timezone),
-    end: fromZonedTime(endLocal, timezone),
-  };
 }

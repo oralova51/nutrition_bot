@@ -66,6 +66,12 @@ export async function handleNutritionDiaryEntry(ctx: BotContext, text: string): 
       approxCalories: parsed.approxCalories,
       status: 'filled',
     });
+    void processDiaryEntry(pendingClarification.id).catch((err: unknown) => {
+      logger.error(
+        { err, entryId: pendingClarification.id },
+        'Ошибка асинхронного анализа дневника после уточнения',
+      );
+    });
     await sendClarificationResponse(
       ctx,
       client.telegramId,

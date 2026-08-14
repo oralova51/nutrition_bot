@@ -6,11 +6,16 @@
 import { Op } from 'sequelize';
 import {
   Client,
+  DEFAULT_TIMEZONE,
   type DiaryStats,
   Message,
+  NotificationSettings,
   NutritionDiary,
   type ProblemArea,
   Report,
+  formatZonedDate,
+  getZonedDayRange,
+  isLocalTimeOnOrAfter,
   sendTelegramMessageWithRetry,
 } from '@nutrition-bot/shared';
 import { createAIEngine } from './factory.js';
@@ -121,6 +126,55 @@ export async function buildAndSendEveningSummary(
   );
 
   return { sent: true, skipped: false, reportId: report.id };
+}
+
+const EVENING_SUMMARY_SLOT = '21:00';
+
+/**
+ * Если по локальному времени клиента уже 21:00+, отправляет дневную сводку.
+ * Нужно, когда первая запись появилась после слота 21:00 или cron его пропустил.
+ */
+export async function maybeSendEveningSummaryIfDue(params: {
+  client: Client;
+  enrollmentId: string;
+  timezone?: string;
+}): Promise<BuildEveningSummaryResult> {
+  const timezone = params.timezone ?? DEFAULT_TIMEZONE;
+  const { client, enrollmentId } = params;
+
+  if (!client.telegramId) {
+    return { sent: false, skipped: true, reason: 'no_telegram' };
+  }
+
+  if (!isLocalTimeOnOrAfter(new Date(), timezone, EVENING_SUMMARY_SLOT)) {
+    return { sent: false, skipped: true, reason: 'too_early' };
+  }
+
+  const settings = await NotificationSettings.findOne({ where: { clientId: client.id } });
+  if (!settings?.enabled || !settings.enabledTypes.includes('evening_summary')) {
+    return { sent: false, skipped: true, reason: 'notifications_disabled' };
+  }
+
+  const now = new Date();
+  const localDate = formatZonedDate(now, timezone);
+  const dayRange = getZonedDayRange(now, timezone);
+  const dayEntries = await NutritionDiary.findAll({
+    where: {
+      clientEnrollmentId: enrollmentId,
+      status: 'filled',
+      mealAt: { [Op.between]: [dayRange.start, dayRange.end] },
+    },
+    order: [['mealAt', 'ASC']],
+  });
+
+  return buildAndSendEveningSummary({
+    client,
+    enrollmentId,
+    dayEntries,
+    localDate,
+    timezone,
+    dayRange,
+  });
 }
 
 async function hasEveningSummaryToday(clientId: string, start: Date, end: Date): Promise<boolean> {

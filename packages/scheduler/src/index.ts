@@ -70,12 +70,16 @@ async function main(): Promise<void> {
   });
 
   // Ежедневная вечерняя сводка питания (roadmap 4.20–4.24, ФТ-24).
-  // 21:00 — после evening reminder, чтобы клиент успел дописать ужин.
-  schedule('*/30 * * * *', () => {
-    void runEveningSummaryJob(logger).catch((err: unknown) => {
-      logger.error({ err }, 'Вечерняя сводка: необработанная ошибка job');
-    });
-  });
+  // С 21:00 до конца дня по TZ клиента, с дедупом 1/день (если 21:00 пропущен — догоняем).
+  schedule(
+    '*/30 * * * *',
+    () => {
+      void runEveningSummaryJob(logger).catch((err: unknown) => {
+        logger.error({ err }, 'Вечерняя сводка: необработанная ошибка job');
+      });
+    },
+    { timezone: 'Europe/Kaliningrad' },
+  );
 
   // Отложенная отправка рекомендаций medium/low (roadmap 5.8).
   // Проверяем каждые 30 минут, чтобы попасть в 20:00 для каждого часового пояса.

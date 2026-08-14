@@ -186,6 +186,23 @@ function detectCriteria(description: string | null): AnalysisCriterion[] {
   );
 }
 
+const PRIORITY_ORDER: Record<RecommendationPriority, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
+
+function pickTopCriteria(criteria: AnalysisCriterion[]): AnalysisCriterion[] {
+  if (criteria.length <= 1) return criteria;
+  return [...criteria]
+    .sort(
+      (a, b) =>
+        PRIORITY_ORDER[CRITERIA_CONFIG[a].priority] - PRIORITY_ORDER[CRITERIA_CONFIG[b].priority],
+    )
+    .slice(0, 1);
+}
+
 function resolveCriteria(
   detected: AnalysisCriterion[],
   entry: DiaryAnalysisInput['entry'],
@@ -209,7 +226,7 @@ export class MockAIEngine implements AIEngine {
     const criteria = resolveCriteria(detected, input.entry);
     const historySummary = buildHistorySummary(input);
 
-    const proposals: RecommendationProposal[] = criteria.map((criterion) => {
+    const proposals: RecommendationProposal[] = pickTopCriteria(criteria).map((criterion) => {
       const config = CRITERIA_CONFIG[criterion];
       return {
         id: randomUUID(),

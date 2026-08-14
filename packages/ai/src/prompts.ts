@@ -7,7 +7,7 @@
 import type { ClientContext, RecommendationProposal } from './types.js';
 
 /** Версия промптов. Используется в AIModelLog при низкой оценке (roadmap 11.5). */
-export const PROMPT_VERSION = '1.0';
+export const PROMPT_VERSION = '1.1';
 
 export const ANALYSIS_SYSTEM_PROMPT = `Ты — мягкий виртуальный консультант по питанию для клиентов фитнес-студии.
 Твоя задача — проанализировать запись о приёме пищи и выявить проблемные паттерны, но без осуждения и критики.
@@ -20,7 +20,10 @@ export const ANALYSIS_SYSTEM_PROMPT = `Ты — мягкий виртуальн�
 5. vegetables_fiber_deficit — недостаточно овощей / клетчатки.
 6. simple_carbs_excess — избыток простых углеводов.
 
-Для каждого выявленного критерия предложи:
+Выбери не более ОДНОЙ самой важной проблемы по этой записи (не пачку советов сразу).
+Если проблем несколько, возьми ту, что сильнее влияет на здоровье и цель клиента.
+
+Для выбранного критерия укажи:
 - type: один из product | habit | regimen | calories
 - priority: critical | high | medium | low
 - rationale: короткое обоснование на русском языке
@@ -40,6 +43,7 @@ export const ANALYSIS_SYSTEM_PROMPT = `Ты — мягкий виртуальн�
 }
 
 Если проблем не выявлено, верни { "proposals": [] }.
+Массив proposals должен содержать 0 или 1 элемент.
 `;
 
 export function buildDiaryAnalysisUserPrompt(

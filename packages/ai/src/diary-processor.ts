@@ -19,24 +19,14 @@ import {
   NutritionDiary,
   Questionnaire,
   Recommendation,
+  getZonedDayRange,
   sendTelegramMessage,
 } from '@nutrition-bot/shared';
+import { maybeSendEveningSummaryIfDue } from './evening-summary.js';
 import { createAIEngine } from './factory.js';
 import { logger } from './logger.js';
-import type {
-  DiaryAnalysisInput,
-  RecommendationPriority,
-  RecommendationProposal,
-} from './types.js';
-
-const MAX_DAILY_RECOMMENDATIONS = 3;
-
-const PRIORITY_ORDER: Record<RecommendationPriority, number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-};
+import { MAX_DAILY_RECOMMENDATIONS, selectProposalsToSend } from './proposal-selection.js';
+import type { DiaryAnalysisInput } from './types.js';
 
 interface ProcessDiaryResult {
   recommendationsCreated: number;
@@ -72,64 +62,70 @@ export async function processDiaryEntry(nutritionDiaryId: string): Promise<Proce
 
   const existingCount = await countRecommendationsToday(client.id);
   const availableSlots = Math.max(0, MAX_DAILY_RECOMMENDATIONS - existingCount);
-
-  if (availableSlots === 0) {
-    return { recommendationsCreated: 0, messagesSent: 0, skippedDueToLimit: 0 };
-  }
-
-  const history = await loadHistoryForEnrollment(entry.clientEnrollmentId);
-  const previousHistory = await loadPreviousEnrollmentHistory(client.id, entry.clientEnrollmentId);
-  const questionnaire = await loadQuestionnaireForEnrollment(entry.clientEnrollmentId);
   const timezone = DEFAULT_TIMEZONE;
-
-  const input: DiaryAnalysisInput = {
-    entry,
-    history,
-    previousHistory,
-    questionnaire,
-    clientContext: {
-      firstName: client.firstName ?? null,
-      timezone,
-    },
-  };
-
-  const engine = createAIEngine();
-  const analysis = await engine.analyzeDiary(input);
-  const proposals = sortProposalsByPriority(analysis.proposals);
 
   let recommendationsCreated = 0;
   let messagesSent = 0;
   let skippedDueToLimit = 0;
 
-  for (const proposal of proposals) {
-    if (recommendationsCreated >= availableSlots) {
-      skippedDueToLimit += 1;
-      continue;
+  if (availableSlots > 0) {
+    const history = await loadHistoryForEnrollment(entry.clientEnrollmentId);
+    const previousHistory = await loadPreviousEnrollmentHistory(
+      client.id,
+      entry.clientEnrollmentId,
+    );
+    const questionnaire = await loadQuestionnaireForEnrollment(entry.clientEnrollmentId);
+
+    const input: DiaryAnalysisInput = {
+      entry,
+      history,
+      previousHistory,
+      questionnaire,
+      clientContext: {
+        firstName: client.firstName ?? null,
+        timezone,
+      },
+    };
+
+    const engine = createAIEngine();
+    const analysis = await engine.analyzeDiary(input);
+    const proposalsToSend = selectProposalsToSend(analysis.proposals, availableSlots);
+    skippedDueToLimit = Math.max(0, analysis.proposals.length - proposalsToSend.length);
+
+    for (const proposal of proposalsToSend) {
+      const text = await engine.generateRecommendationText(proposal, input.clientContext);
+      const recommendation = await Recommendation.create({
+        clientId: client.id,
+        nutritionDiaryId: entry.id,
+        questionnaireId: null,
+        type: proposal.type,
+        priority: proposal.priority,
+        content: text,
+        status: 'sent',
+      });
+
+      recommendationsCreated += 1;
+
+      // Быстрая обратная связь: отправляем сразу после подтверждения дневника.
+      // Вечерний job (roadmap 5.8) пропускает уже отправленные через hasRecommendationMessage.
+      await sendRecommendationMessage(client.telegramId, client.id, recommendation.id, text);
+      messagesSent += 1;
     }
-
-    const text = await engine.generateRecommendationText(proposal, input.clientContext);
-    const recommendation = await Recommendation.create({
-      clientId: client.id,
-      nutritionDiaryId: entry.id,
-      questionnaireId: null,
-      type: proposal.type,
-      priority: proposal.priority,
-      content: text,
-      status: 'sent',
-    });
-
-    recommendationsCreated += 1;
-
-    // Быстрая обратная связь: отправляем сразу после подтверждения дневника.
-    // Вечерний job (roadmap 5.8) пропускает уже отправленные через hasRecommendationMessage.
-    await sendRecommendationMessage(client.telegramId, client.id, recommendation.id, text);
-    messagesSent += 1;
   }
 
-  skippedDueToLimit += Math.max(
-    0,
-    analysis.proposals.length - recommendationsCreated - skippedDueToLimit,
-  );
+  // Если клиент записал еду уже после 21:00, сводка иначе пропустит день.
+  try {
+    await maybeSendEveningSummaryIfDue({
+      client,
+      enrollmentId: enrollment.id,
+      timezone,
+    });
+  } catch (err) {
+    logger.error(
+      { err, clientId: client.id, entryId: nutritionDiaryId },
+      'Не удалось отправить вечернюю сводку после записи дневника',
+    );
+  }
 
   logger.info(
     {
@@ -188,25 +184,15 @@ async function loadQuestionnaireForEnrollment(
 async function countRecommendationsToday(clientId: string): Promise<number> {
   // Лимит 2–3/день — по факту доставленных в Telegram, а не по «висящим» строкам в БД.
   // Иначе сбой отправки блокирует обратную связь до конца суток.
-  const now = new Date();
-  const startOfDay = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0),
-  );
-  const endOfDay = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0),
-  );
+  const { start, end } = getZonedDayRange(new Date(), DEFAULT_TIMEZONE);
 
   return Message.count({
     where: {
       clientId,
       type: 'recommendation',
-      createdAt: { [Op.between]: [startOfDay, endOfDay] },
+      createdAt: { [Op.between]: [start, end] },
     },
   });
-}
-
-function sortProposalsByPriority(proposals: RecommendationProposal[]): RecommendationProposal[] {
-  return [...proposals].sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]);
 }
 
 async function sendRecommendationMessage(
