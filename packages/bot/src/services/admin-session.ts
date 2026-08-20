@@ -2,8 +2,7 @@
 // Для одного администратора на пилоте достаточно; переживает только lifetime процесса бота.
 
 export type AdminSession =
-  | { step: 'awaiting_course_days' }
-  | { step: 'awaiting_client_name'; courseId: string };
+  { step: 'awaiting_course_days' } | { step: 'awaiting_client_name'; courseId: string };
 
 const sessions = new Map<string, AdminSession>();
 

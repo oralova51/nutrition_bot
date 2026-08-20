@@ -13,7 +13,13 @@ export default defineConfig(
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['scripts/*.ts', 'migrations/*.ts', 'vitest.config.ts'],
+          allowDefaultProject: [
+            'scripts/*.ts',
+            'migrations/*.ts',
+            'test/*.ts',
+            'vitest.config.ts',
+            'vitest.eval.config.ts',
+          ],
           defaultProject: 'tsconfig.scripts.json',
           // Список миграций будет расти на каждом этапе roadmap — поднимаем лимит,
           // чтобы не приходилось трогать конфиг при каждой новой миграции.
@@ -24,7 +30,7 @@ export default defineConfig(
     },
   },
   {
-    files: ['**/*.test.ts'],
+    files: ['**/*.test.ts', '**/*.eval.ts', 'packages/shared/src/testing/**/*.ts', 'test/**/*.ts'],
     rules: {
       '@typescript-eslint/no-floating-promises': 'off',
       '@typescript-eslint/unbound-method': 'off',

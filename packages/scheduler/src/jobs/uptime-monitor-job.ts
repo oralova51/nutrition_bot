@@ -1,4 +1,6 @@
 // Мониторинг uptime API и алертинг администратору при недоступности (roadmap 11.4).
+// Локальный URL / пустой API_HEALTH_URL не алертят: это шум при разработке
+// и ложные срабатывания, если переменная забыта на проде.
 
 import type { Logger } from 'pino';
 import { sendAdminAlert } from '@nutrition-bot/shared';
@@ -10,14 +12,29 @@ interface HealthPayload {
   uptimeSeconds?: number;
 }
 
-const DEFAULT_HEALTH_URL = 'http://localhost:3000/api/v1/health';
+export function resolveHealthUrl(): string | undefined {
+  const raw = process.env.API_HEALTH_URL?.trim();
+  return raw && raw.length > 0 ? raw : undefined;
+}
 
-function resolveHealthUrl(): string {
-  return process.env.API_HEALTH_URL || DEFAULT_HEALTH_URL;
+export function isRemoteHealthUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return hostname !== 'localhost' && hostname !== '127.0.0.1' && hostname !== '::1';
+  } catch {
+    return false;
+  }
 }
 
 export async function runUptimeMonitorJob(logger: Logger): Promise<void> {
   const url = resolveHealthUrl();
+  if (!url || !isRemoteHealthUrl(url)) {
+    logger.debug(
+      { url: url ?? null },
+      'Uptime monitor: пропуск (задайте публичный API_HEALTH_URL)',
+    );
+    return;
+  }
 
   try {
     const response = await fetch(url, { method: 'GET' });

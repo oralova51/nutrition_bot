@@ -6,11 +6,7 @@ import type { CallbackQueryContext, CommandContext, NextFunction } from 'grammy'
 import { InlineKeyboard } from 'grammy';
 import type { BotContext } from '../context.js';
 import { isAdminTelegramUser, resolveAdminTelegramId } from '../services/admin-auth.js';
-import {
-  clearAdminSession,
-  getAdminSession,
-  setAdminSession,
-} from '../services/admin-session.js';
+import { clearAdminSession, getAdminSession, setAdminSession } from '../services/admin-session.js';
 import {
   createCourseByDays,
   inviteClient,
@@ -123,8 +119,7 @@ export async function handleAdminCallback(ctx: CallbackQueryContext<BotContext>)
     setAdminSession(key, { step: 'awaiting_course_days' });
     await ctx.answerCallbackQuery();
     await ctx.editMessageText(
-      'Создание курса\n\nВведите длительность в днях (целое число от 1 до 365).\n\n' +
-        CANCEL_HINT,
+      'Создание курса\n\nВведите длительность в днях (целое число от 1 до 365).\n\n' + CANCEL_HINT,
       { reply_markup: buildCancelKeyboard() },
     );
     return;
