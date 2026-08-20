@@ -156,7 +156,22 @@ export class OpenAICompatibleAIEngine implements AIEngine {
       return proposal.draftText;
     }
 
-    const text = response.choices[0]?.message?.content?.trim() ?? proposal.draftText;
+    // Пустая строка — реальный случай у reasoning-моделей, когда бюджет токенов
+    // ушёл на thinking. `??` её не отсекает, поэтому проверяем на falsy:
+    // иначе клиент получит пустое сообщение, а Telegram — ошибку доставки.
+    const text = response.choices[0]?.message?.content?.trim();
+    if (!text) {
+      logger.warn(
+        {
+          model: this.config.model,
+          criterion: proposal.criterion,
+          finishReason: response.choices[0]?.finish_reason,
+        },
+        'AI вернул пустой текст рекомендации — отправляем черновик',
+      );
+      return proposal.draftText;
+    }
+
     logger.info(
       { model: this.config.model, criterion: proposal.criterion, length: text.length },
       'AI: генерация текста рекомендации завершена',
