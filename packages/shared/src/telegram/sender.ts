@@ -52,7 +52,10 @@ async function createPendingMessage(
   });
 }
 
-/** Логирует сбой доставки и отправляет алерт администратору (best-effort). */
+/**
+ * Логирует сбой доставки и отправляет алерт администратору (best-effort).
+ * Вызывается только при исчерпании retry: единичные сбои не должны его будить.
+ */
 function alertAdminOnDeliveryFailure(
   message: Message,
   payload: TelegramMessagePayload,
@@ -103,7 +106,16 @@ export async function sendTelegramMessage(
     return { telegramMessageId: telegramMessage.message_id, message };
   } catch (err) {
     await message.update({ deliveryStatus: 'delivery_failed', retryCount: 0 });
-    alertAdminOnDeliveryFailure(message, payload, 0, err);
+    // Личный алерт администратору здесь не шлём: это ответ в реальном времени без
+    // ретраев, и единичный сбой не повод его будить. Массовые сбои ловит отдельный
+    // job по количеству delivery_failed за окно (roadmap 10.8).
+    logMessageDeliveryFailure(logger, {
+      clientId: payload.clientId,
+      messageId: message.id,
+      channel: 'telegram',
+      retryCount: 0,
+      err,
+    });
     throw err;
   }
 }
