@@ -5,7 +5,7 @@
 > Пометка `✓` внутри шагов = готова спецификация в `SA/`, **не** реализация кода.
 > Правило: при старте шага ставь `[~]`, при завершении — `[x]`, и синхронизируй статус здесь.
 
-**Текущий фокус:** Этап 13 — тестовое покрытие: шаги 13.1–13.7 завершены (инфраструктура, доставка в Telegram, AI-адаптер, обработка дневника, admin API, сценарии бота по CJM, job'ы scheduler), следующий — 13.8 (ИИ-уточнения по неполной записи дневника + eval-набор). Покрытие проекта: 33.5% statements по `npm test`; интеграционные и сценарные наборы идут отдельной командой `npm run test:integration` и в это число не входят. Пилот (этап 12) — go/no-go после цикла когорты.
+**Текущий фокус:** Этап 13 — тестовое покрытие: шаги 13.1–13.8 завершены (инфраструктура, доставка в Telegram, AI-адаптер, обработка дневника, admin API, сценарии бота по CJM, job'ы scheduler, ИИ-уточнения + eval-набор), следующий — 13.9 (зафиксировать порог покрытия в vitest.config.ts). Покрытие проекта: 33.5% statements по `npm test`; интеграционные и сценарные наборы идут отдельной командой `npm run test:integration` и в это число не входят. Пилот (этап 12) — go/no-go после цикла когорты.
 
 - [x] Этап 0 — Подготовка (спецификации SA: ERD, Domain, adminAPI готовы; шаг 0.5 ✓)
 - [x] Этап 1 — Каркас проекта (TS/ESLint/Prettier, БД, модели Client/Course/Enrollment/Notification/Message, логирование, health-check)
@@ -21,7 +21,7 @@
 - [x] Этап 10 — Ошибки и edge cases (ФТ-21, ФТ-22) — код и документация реализованы, см. SA/stage10-errors.md
 - [x] Этап 11 — Non-functional (шифрование, хранение, мониторинг, AIModelLog) — завершён
 - [x] Этап 12 — Пилот (seed, чек-листы CJM, метрики, go/no-go)
-- [~] Этап 13 — Тестовое покрытие (13.1–13.7 готовы: инфраструктура, доставка в Telegram, AI-адаптер, дневник, admin API на живой БД, сценарии бота по CJM, job'ы scheduler; дальше: ИИ-уточнения и eval → порог покрытия)
+- [x] Этап 13 — Тестовое покрытие (13.1–13.8 готовы: инфраструктура, доставка в Telegram, AI-адаптер, дневник, admin API на живой БД, сценарии бота по CJM, job'ы scheduler, ИИ-уточнения + eval; дальше: 13.9 — порог покрытия)
 
 ---
 
@@ -645,10 +645,15 @@ Job'ы scheduler с фейковыми таймерами
 > Убрано дублирование: локальный `getZonedDayRange` в `evening-reminder-job.ts` повторял одноимённый хелпер из `@nutrition-bot/shared` — заменён на общий, как `buildHistorySummary` в 13.4. `daily-reminder` и `recommendation-delivery` перешли на `formatZonedTime`/`formatZonedDate` вместо ручной пары `toZonedTime` + `format`.
 > Тестовые утилиты: `makeTestLogger()` в `@nutrition-bot/shared/testing` вместо копии заглушки `Logger` в каждом файле.
 > Замечание для 13.9: `packages/scheduler/src/http-server.ts` (force-эндпоинты job'ов) и `config.ts` — 0%. Это не логика job'ов, а транспорт; ставить порог по пакету целиком нельзя, ориентир — папка `jobs`.
-13.8 [ ]
+13.8 [x]
 ИИ-уточнения по неполной записи дневника + eval-набор
 ФТ-22
-> Сейчас `isIncompleteDescription` в `packages/bot/src/services/nutrition-diary.ts` ловит только мусор (короче 3 символов или без букв): «я съела яйца» сохраняется как `filled` без вопроса о количестве, а ответ «3» на уточнение снова считается неполным. Нужен метод `AIEngine` со структурированным ответом (`needsClarification`, `missingFields`, `question`) — иначе eval придётся проверять регулярками по свободному тексту. Eval проверяет свойства ответа, а не точные формулировки; метрика — доля пройденных кейсов, порог не должен падать.
+> Реализован метод `AIEngine.checkDiaryClarity` с типами `ClarityCheckInput`/`ClarityCheckResult` (`needsClarification`, `missingFields`, `question`).
+> `MockAIEngine` определяет неполную запись эвристикой: отсутствие продукта (`product`) или количества (`quantity`), с детерминированным вопросом.
+> `OpenAICompatibleAIEngine` вызывает модель с JSON-форматом и промптом `CLARITY_CHECK_SYSTEM_PROMPT`; при сбое провайдера или битом JSON возвращает безопасный fallback (`needsClarification: false`), чтобы не спамить клиента уточнениями.
+> `packages/bot/src/services/nutrition-diary.ts` заменил `isIncompleteDescription` на `engine.checkDiaryClarity`: первая неполная запись создаёт `NutritionDiary` со статусом `needs_clarification` и мягким вопросом от AI; при уточнении описания объединяются и снова проверяются; после 3 попыток запись остаётся `needs_clarification` для администратора.
+> Eval-набор `packages/ai/src/clarity-check.eval.ts`: baseline для `MockAIEngine` (15 кейсов, 100% pass) и контрактные проверки `OpenAICompatibleAIEngine` с замоканным SDK. Запускается отдельно: `npm run eval`.
+> Юнит-тесты `nutrition-diary.test.ts` обновлены: замокан `createAIEngine`, добавлены кейсы на уточнение, разрешение и сбой AI. `npm test` — 223 passed, `npm run eval` — 15 passed.
 13.9 [ ]
 Зафиксировать порог покрытия в vitest.config.ts
 nonFR

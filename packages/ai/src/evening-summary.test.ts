@@ -59,6 +59,7 @@ function fakeEngine(): AIEngine {
       summaryText: SUMMARY_TEXT,
       metadata: { engine: 'fake' },
     }),
+    checkDiaryClarity: vi.fn(),
   };
 }
 

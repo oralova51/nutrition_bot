@@ -73,6 +73,7 @@ function fakeEngine(proposals: RecommendationProposal[]): AIEngine {
     analyzeDiary: vi.fn().mockResolvedValue({ proposals, metadata: { engine: 'fake' } }),
     generateRecommendationText: vi.fn().mockResolvedValue(RECOMMENDATION_TEXT),
     generateEveningSummary: vi.fn(),
+    checkDiaryClarity: vi.fn(),
   };
 }
 

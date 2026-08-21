@@ -1,8 +1,8 @@
 import { defineConfig } from 'vitest/config';
 import { workspaceAliases } from './vitest.config.js';
 
-// Eval-наборы обращаются к реальной модели: они стоят денег и не детерминированы,
-// поэтому запускаются отдельной командой `npm run eval`, а не вместе с юнит-тестами.
+// Eval-наборы проверяют свойства ответа AI Engine и не должны смешиваться
+// с быстрыми юнит-тестами. Запускаются отдельной командой `npm run eval`.
 export default defineConfig({
   resolve: {
     alias: workspaceAliases,

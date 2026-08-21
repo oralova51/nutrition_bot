@@ -7,6 +7,9 @@
 import OpenAI from 'openai';
 import type {
   AIEngine,
+  ClarityCheckInput,
+  ClarityCheckResult,
+  ClarityMissingField,
   ClientContext,
   DiaryAnalysisInput,
   DiaryAnalysisResult,
@@ -17,9 +20,11 @@ import type {
 import type { AIConfig } from './config.js';
 import {
   ANALYSIS_SYSTEM_PROMPT,
+  buildClarityCheckUserPrompt,
   buildDiaryAnalysisUserPrompt,
   buildEveningSummaryUserPrompt,
   buildRecommendationUserPrompt,
+  CLARITY_CHECK_SYSTEM_PROMPT,
   EVENING_SUMMARY_SYSTEM_PROMPT,
   RECOMMENDATION_SYSTEM_PROMPT,
 } from './prompts.js';
@@ -372,10 +377,97 @@ export class OpenAICompatibleAIEngine implements AIEngine {
     };
   }
 
+  async checkDiaryClarity(input: ClarityCheckInput): Promise<ClarityCheckResult> {
+    const userPrompt = buildClarityCheckUserPrompt(
+      input.description,
+      input.hasPhoto ?? false,
+      input.approxCalories ?? null,
+      input.clientContext,
+    );
+
+    logger.debug(
+      { model: this.config.model, description: input.description.slice(0, 100) },
+      'Запрос к AI: проверка полноты записи дневника',
+    );
+
+    await this.rateLimiter.acquire();
+
+    let response;
+    try {
+      response = await this.client.chat.completions.create({
+        model: this.config.model,
+        messages: [
+          { role: 'system', content: CLARITY_CHECK_SYSTEM_PROMPT },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: this.config.maxTokens,
+        temperature: this.config.temperature,
+        response_format: { type: 'json_object' },
+      });
+    } catch (err) {
+      logger.error(
+        { err, model: this.config.model, description: input.description.slice(0, 100) },
+        'Ошибка при вызове AI: проверка полноты записи дневника',
+      );
+      // При сбое провайдера не блокируем клиента: считаем запись достаточной,
+      // чтобы не спамить уточнениями при временных проблемах с AI.
+      return { needsClarification: false, missingFields: [], question: null };
+    }
+
+    const rawContent = response.choices[0]?.message?.content ?? '';
+    const jsonContent = extractJson(rawContent);
+    let parsed: Partial<ClarityCheckResult> | null = null;
+
+    try {
+      parsed = JSON.parse(jsonContent) as Partial<ClarityCheckResult>;
+    } catch {
+      logger.warn(
+        { rawContent, model: this.config.model, description: input.description.slice(0, 100) },
+        'AI вернул некорректный JSON при проверке полноты записи дневника',
+      );
+    }
+
+    const validMissingFields: ClarityMissingField[] = ['product', 'quantity', 'time', 'calories'];
+    const missingFields = (parsed?.missingFields ?? []).filter((field): field is ClarityMissingField =>
+      validMissingFields.includes(field),
+    );
+    const needsClarification =
+      typeof parsed?.needsClarification === 'boolean' ? parsed.needsClarification : missingFields.length > 0;
+    const question = typeof parsed?.question === 'string' ? parsed.question.trim() || null : null;
+
+    const result: ClarityCheckResult = {
+      needsClarification,
+      missingFields,
+      question: needsClarification ? question : null,
+    };
+
+    logger.info(
+      {
+        model: this.config.model,
+        description: input.description.slice(0, 100),
+        needsClarification: result.needsClarification,
+        missingFields: result.missingFields,
+        usage: response.usage,
+      },
+      'AI: проверка полноты записи дневника завершена',
+    );
+
+    return result;
+  }
+
   private buildPreviousHistorySummary(input: DiaryAnalysisInput): string | undefined {
     if (!input.previousHistory || input.previousHistory.length === 0) {
       return undefined;
     }
     return `Записей за предыдущий курс: ${input.previousHistory.length}. Последняя запись: ${input.previousHistory[0]?.description ?? '(без описания)'}.`;
   }
+}
+
+function extractJson(text: string): string {
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end === -1 || end < start) {
+    return text;
+  }
+  return text.slice(start, end + 1);
 }

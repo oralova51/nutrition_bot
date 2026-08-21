@@ -4,7 +4,8 @@
 
 import { fromZonedTime, format, toZonedTime } from 'date-fns-tz';
 import { Op } from 'sequelize';
-import { processDiaryEntry } from '@nutrition-bot/ai';
+import { createAIEngine, processDiaryEntry } from '@nutrition-bot/ai';
+import type { AIEngine, ClarityCheckResult } from '@nutrition-bot/ai';
 import {
   createLogger,
   DEFAULT_TIMEZONE,
@@ -17,7 +18,7 @@ const logger = createLogger('nutrition-diary');
 
 const CONFIRMATION_MESSAGE = 'Спасибо, записал! 🍽️';
 const PHOTO_CONFIRMATION_MESSAGE = 'Спасибо, записал фото! 🍽️';
-const CLARIFICATION_REQUEST_MESSAGE = 'Кажется, я не понял. Можете переформулировать?';
+const CLARIFICATION_REQUEST_FALLBACK = 'Кажется, я не понял. Можете переформулировать?';
 const CLARIFICATION_RESOLVED_MESSAGE = 'Спасибо, уточнил! 🍽️';
 const CLARIFICATION_GAVE_UP_MESSAGE = 'Записал как есть. Позже мы уточним детали.';
 
@@ -44,22 +45,29 @@ export async function handleNutritionDiaryEntry(ctx: BotContext, text: string): 
 
   const timezone = DEFAULT_TIMEZONE;
   const pendingClarification = await findPendingClarification(enrollment.id, timezone);
-
-  if (isIncompleteDescription(text)) {
-    await handleIncompleteEntry(
-      ctx,
-      client.id,
-      client.telegramId,
-      enrollment.id,
-      text,
-      timezone,
-      pendingClarification,
-    );
-    return;
-  }
+  const engine = createAIEngine();
 
   if (pendingClarification) {
-    const parsed = parseDiaryEntry(text, timezone);
+    const combinedDescription = [pendingClarification.description, text]
+      .filter(Boolean)
+      .join('\n');
+    const clarity = await resolveClarity(engine, combinedDescription, client.firstName, timezone);
+
+    if (clarity.needsClarification) {
+      await handleIncompleteEntry(
+        ctx,
+        client.id,
+        client.telegramId,
+        enrollment.id,
+        combinedDescription,
+        timezone,
+        pendingClarification,
+        clarity.question ?? CLARIFICATION_REQUEST_FALLBACK,
+      );
+      return;
+    }
+
+    const parsed = parseDiaryEntry(combinedDescription, timezone);
     await pendingClarification.update({
       mealAt: parsed.mealAt,
       description: parsed.description,
@@ -77,6 +85,21 @@ export async function handleNutritionDiaryEntry(ctx: BotContext, text: string): 
       client.telegramId,
       client.id,
       CLARIFICATION_RESOLVED_MESSAGE,
+    );
+    return;
+  }
+
+  const clarity = await resolveClarity(engine, text, client.firstName, timezone);
+  if (clarity.needsClarification) {
+    await handleIncompleteEntry(
+      ctx,
+      client.id,
+      client.telegramId,
+      enrollment.id,
+      text,
+      timezone,
+      null,
+      clarity.question ?? CLARIFICATION_REQUEST_FALLBACK,
     );
     return;
   }
@@ -162,10 +185,22 @@ function getCurrentZonedTime(timezone: string): Date {
   return fromZonedTime(toZonedTime(new Date(), timezone), timezone);
 }
 
-function isIncompleteDescription(text: string): boolean {
-  const normalized = text.trim();
-  if (normalized.length < 3) return true;
-  return !/[a-zA-Zа-яА-ЯёЁ]/.test(normalized);
+async function resolveClarity(
+  engine: AIEngine,
+  description: string,
+  firstName: string | null,
+  timezone: string,
+): Promise<ClarityCheckResult> {
+  try {
+    return await engine.checkDiaryClarity({
+      description,
+      clientContext: { firstName, timezone },
+    });
+  } catch (err) {
+    logger.error({ err, description: description.slice(0, 100) }, 'Ошибка при проверке полноты записи дневника');
+    // При сбое AI не блокируем клиента уточнениями: сохраняем запись как есть.
+    return { needsClarification: false, missingFields: [], question: null };
+  }
 }
 
 async function findPendingClarification(
@@ -191,13 +226,14 @@ async function handleIncompleteEntry(
   text: string,
   timezone: string,
   pendingClarification: NutritionDiary | null,
+  question: string,
 ): Promise<void> {
   if (pendingClarification) {
     const attempts = pendingClarification.clarificationAttempts + 1;
-    const description = [pendingClarification.description, text].filter(Boolean).join('\n');
     await pendingClarification.update({
-      description,
+      description: text,
       clarificationAttempts: attempts,
+      status: 'needs_clarification',
     });
 
     if (attempts >= 3) {
@@ -205,7 +241,7 @@ async function handleIncompleteEntry(
       return;
     }
 
-    await sendClarificationResponse(ctx, telegramId, clientId, CLARIFICATION_REQUEST_MESSAGE);
+    await sendClarificationResponse(ctx, telegramId, clientId, question);
     return;
   }
 
@@ -218,7 +254,7 @@ async function handleIncompleteEntry(
     status: 'needs_clarification',
     clarificationAttempts: 1,
   });
-  await sendClarificationResponse(ctx, telegramId, clientId, CLARIFICATION_REQUEST_MESSAGE);
+  await sendClarificationResponse(ctx, telegramId, clientId, question);
 }
 
 async function sendClarificationResponse(

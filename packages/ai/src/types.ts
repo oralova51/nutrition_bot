@@ -73,6 +73,28 @@ export interface EveningSummaryResult {
   metadata: Record<string, unknown>;
 }
 
+export type ClarityMissingField = 'product' | 'quantity' | 'time' | 'calories';
+
+export interface ClarityCheckInput {
+  /** Текстовое описание записи дневника, которое нужно оценить. */
+  description: string;
+  /** К записи приложено фото (OCR/vision пока не используется). */
+  hasPhoto?: boolean;
+  /** Указанная клиентом приблизительная калорийность. */
+  approxCalories?: number | null;
+  /** Контекст клиента для персонализации вопроса. */
+  clientContext: ClientContext;
+}
+
+export interface ClarityCheckResult {
+  /** Нужно ли уточнять запись перед анализом. */
+  needsClarification: boolean;
+  /** Каких полей не хватает: product | quantity | time | calories. */
+  missingFields: ClarityMissingField[];
+  /** Мягкий уточняющий вопрос на русском языке; null, если уточнение не нужно. */
+  question: string | null;
+}
+
 export interface AIEngine {
   /** Проанализировать запись дневника и предложить рекомендации. */
   analyzeDiary(input: DiaryAnalysisInput): Promise<DiaryAnalysisResult>;
@@ -85,4 +107,11 @@ export interface AIEngine {
 
   /** Сгенерировать ежедневную вечернюю сводку по всем записям дня (ФТ-24). */
   generateEveningSummary(input: EveningSummaryInput): Promise<EveningSummaryResult>;
+
+  /**
+   * Проверить, достаточно ли в записи дневника информации для анализа (ФТ-22).
+   * Возвращает структурированный ответ: нужно ли уточнение, чего не хватает
+   * и какой мягкий вопрос задать клиенту.
+   */
+  checkDiaryClarity(input: ClarityCheckInput): Promise<ClarityCheckResult>;
 }

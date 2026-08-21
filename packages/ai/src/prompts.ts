@@ -154,3 +154,52 @@ export function buildEveningSummaryUserPrompt(
     entriesSummary,
   ].join('\n');
 }
+
+export const CLARITY_CHECK_SYSTEM_PROMPT = `Ты — мягкий виртуальный консультант по питанию для клиентов фитнес-студии.
+Оцени, достаточно ли в записи о приёме пищи информации для анализа.
+
+Для анализа нужно минимум:
+- что именно съели/пили (продукт или блюдо);
+- примерное количество/объём (хотя бы «немного», «тарелка», «2 яйца», «стакан»).
+
+Калорийность и время приёма — не обязательны: бот извлечёт их отдельно или уточнит позже.
+
+Если записи достаточно, верни JSON:
+{
+  "needsClarification": false,
+  "missingFields": [],
+  "question": null
+}
+
+Если информации не хватает, верни JSON:
+{
+  "needsClarification": true,
+  "missingFields": ["product" | "quantity"],
+  "question": "мягкий конкретный вопрос на русском языке"
+}
+
+Поле question должно быть коротким, мягким и уточнять только недостающее.
+Не критикуй клиента и не предлагай советы — только уточни детали.
+`;
+
+export function buildClarityCheckUserPrompt(
+  description: string,
+  hasPhoto: boolean,
+  approxCalories: number | null,
+  context: ClientContext,
+): string {
+  const parts: string[] = [
+    `Имя клиента: ${context.firstName ?? 'клиент'}`,
+    `Запись о приёме пищи: ${description || '(без описания)'}`,
+  ];
+
+  if (hasPhoto) {
+    parts.push('К записи приложено фото.');
+  }
+
+  if (approxCalories !== null) {
+    parts.push(`Приблизительная калорийность: ${approxCalories} ккал.`);
+  }
+
+  return parts.join('\n');
+}

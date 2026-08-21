@@ -10,6 +10,9 @@ import { randomUUID } from 'node:crypto';
 import type {
   AIEngine,
   AnalysisCriterion,
+  ClarityCheckInput,
+  ClarityCheckResult,
+  ClarityMissingField,
   ClientContext,
   DiaryAnalysisInput,
   DiaryAnalysisResult,
@@ -203,6 +206,186 @@ function resolveCriteria(
   return [];
 }
 
+const COMMON_WORDS: ReadonlySet<string> = new Set([
+  'я',
+  'съел',
+  'съела',
+  'съели',
+  'поел',
+  'поела',
+  'поели',
+  'выпил',
+  'выпила',
+  'выпили',
+  'ел',
+  'ела',
+  'ели',
+  'пил',
+  'пила',
+  'пили',
+  'завтрак',
+  'завтракал',
+  'завтракала',
+  'обед',
+  'обедал',
+  'обедала',
+  'ужин',
+  'ужинал',
+  'ужинала',
+  'перекус',
+  'перекусил',
+  'перекусила',
+  'на',
+  'в',
+  'с',
+  'по',
+  'и',
+  'к',
+  'за',
+  'под',
+  'из',
+  'под',
+  'просто',
+  'только',
+  'чуть',
+  'чуток',
+  'немного',
+  'немножко',
+  'много',
+  'мало',
+  'сегодня',
+  'утром',
+  'днем',
+  'вечером',
+  'ночью',
+  'вчера',
+  'сейчас',
+  'потом',
+  'позже',
+]);
+
+const QUANTITY_MARKERS: ReadonlySet<string> = new Set([
+  'грамм',
+  'грам',
+  'гр',
+  'кг',
+  'шт',
+  'штук',
+  'штука',
+  'штуки',
+  'ломтик',
+  'ломтика',
+  'ломтиков',
+  'чашка',
+  'чашки',
+  'чашек',
+  'стакан',
+  'стакана',
+  'стаканов',
+  'бокал',
+  'бокала',
+  'бокалов',
+  'тарелка',
+  'тарелки',
+  'тарелок',
+  'кусок',
+  'куска',
+  'кусков',
+  'порция',
+  'порции',
+  'порций',
+  'бутылка',
+  'бутылки',
+  'бутылок',
+  'банка',
+  'банки',
+  'банок',
+  'упаковка',
+  'упаковки',
+  'упаковок',
+  'пачка',
+  'пачки',
+  'пачек',
+  'половина',
+  'половинка',
+  'целый',
+  'целая',
+  'целое',
+  'полный',
+  'полная',
+  'полное',
+  'большой',
+  'большая',
+  'большое',
+  'маленький',
+  'маленькая',
+  'маленькое',
+  'средний',
+  'средняя',
+  'среднее',
+  'столовая',
+  'чайная',
+  'горсть',
+  'щепотка',
+  'долька',
+  'дольки',
+  'долек',
+  'сто',
+  'тысяча',
+  'тысячи',
+  'тысяч',
+]);
+
+function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-zа-яё0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((token) => token.length > 0);
+}
+
+function hasProductToken(description: string): boolean {
+  const tokens = tokenize(description);
+  return tokens.some(
+    (token) =>
+      !COMMON_WORDS.has(token) &&
+      !QUANTITY_MARKERS.has(token) &&
+      !/^\d+$/.test(token),
+  );
+}
+
+function hasQuantityMarker(description: string): boolean {
+  const tokens = tokenize(description);
+  if (/\d/.test(description)) return true;
+  return tokens.some((token) => QUANTITY_MARKERS.has(token));
+}
+
+function checkClarityHeuristic(description: string): ClarityCheckResult {
+  const normalized = description.trim();
+  const missingFields: ClarityMissingField[] = [];
+
+  if (normalized.length < 3 || !/[a-zA-Zа-яА-ЯёЁ]/.test(normalized)) {
+    missingFields.push('product');
+  } else if (!hasProductToken(normalized)) {
+    missingFields.push('product');
+  }
+
+  if (missingFields.length === 0 && !hasQuantityMarker(normalized)) {
+    missingFields.push('quantity');
+  }
+
+  if (missingFields.length === 0) {
+    return { needsClarification: false, missingFields: [], question: null };
+  }
+
+  const question =
+    missingFields[0] === 'product'
+      ? 'Что именно вы съели или выпили?'
+      : 'Сколько это было примерно? Например, «2 яйца» или «тарелка супа».';
+
+  return { needsClarification: true, missingFields, question };
+}
+
 export class MockAIEngine implements AIEngine {
   analyzeDiary(input: DiaryAnalysisInput): Promise<DiaryAnalysisResult> {
     const detected = detectCriteria(input.entry.description);
@@ -253,5 +436,10 @@ export class MockAIEngine implements AIEngine {
         engine: 'mock',
       },
     });
+  }
+
+  checkDiaryClarity(input: ClarityCheckInput): Promise<ClarityCheckResult> {
+    void input.clientContext;
+    return Promise.resolve(checkClarityHeuristic(input.description));
   }
 }

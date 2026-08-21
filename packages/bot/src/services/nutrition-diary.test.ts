@@ -17,7 +17,10 @@ const { logger } = vi.hoisted(() => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-vi.mock('@nutrition-bot/ai', () => ({ processDiaryEntry: vi.fn() }));
+vi.mock('@nutrition-bot/ai', () => ({
+  processDiaryEntry: vi.fn(),
+  createAIEngine: vi.fn(),
+}));
 vi.mock('@nutrition-bot/shared', () => ({
   createLogger: () => logger,
   DEFAULT_TIMEZONE: 'Europe/Kaliningrad',
@@ -25,10 +28,11 @@ vi.mock('@nutrition-bot/shared', () => ({
   sendTelegramMessage: vi.fn(),
 }));
 
-import { processDiaryEntry } from '@nutrition-bot/ai';
+import { createAIEngine, processDiaryEntry } from '@nutrition-bot/ai';
 import { NutritionDiary, sendTelegramMessage } from '@nutrition-bot/shared';
 import type { BotContext } from '../context.js';
 import { handleNutritionDiaryEntry } from './nutrition-diary.js';
+import type { AIEngine } from '@nutrition-bot/ai';
 
 const CONFIRMATION_MESSAGE = 'Спасибо, записал! 🍽️';
 
@@ -40,6 +44,21 @@ function context(): BotContext {
   } as unknown as BotContext;
 }
 
+function fakeEngine(
+  clarityResult: {
+    needsClarification: boolean;
+    missingFields: string[];
+    question: string | null;
+  } = { needsClarification: false, missingFields: [], question: null },
+): AIEngine {
+  return {
+    checkDiaryClarity: vi.fn().mockResolvedValue(clarityResult),
+    analyzeDiary: vi.fn(),
+    generateRecommendationText: vi.fn(),
+    generateEveningSummary: vi.fn(),
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(NutritionDiary.findOne).mockResolvedValue(null);
@@ -48,6 +67,7 @@ beforeEach(() => {
     telegramMessageId: 1,
     message: makeMessage(),
   });
+  vi.mocked(createAIEngine).mockReturnValue(fakeEngine());
 });
 
 describe('handleNutritionDiaryEntry — изоляция ошибок AI', () => {
@@ -139,5 +159,131 @@ describe('handleNutritionDiaryEntry — разбор текста', () => {
 
     // Некорректное время не должно подменять описание или ронять обработку.
     expect(createdEntry().description).toBe('в 33:99 что-то съел');
+  });
+});
+
+const CLARIFICATION_QUESTION = 'Сколько это было примерно?';
+
+describe('handleNutritionDiaryEntry — AI-проверка полноты (ФТ-22)', () => {
+  it('создаёт запись needs_clarification и отправляет мягкий вопрос от AI', async () => {
+    vi.mocked(createAIEngine).mockReturnValue(
+      fakeEngine({
+        needsClarification: true,
+        missingFields: ['quantity'],
+        question: CLARIFICATION_QUESTION,
+      }),
+    );
+
+    await handleNutritionDiaryEntry(context(), 'я съела яйца');
+
+    expect(NutritionDiary.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: 'я съела яйца',
+        status: 'needs_clarification',
+        clarificationAttempts: 1,
+      }),
+    );
+    expect(sendTelegramMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ text: CLARIFICATION_QUESTION }),
+    );
+  });
+
+  it('разрешает уточнение, если ответ AI теперь понятен', async () => {
+    const pending = makeDiaryEntry({
+      id: 'diary-pending',
+      status: 'needs_clarification',
+      description: 'я съела яйца',
+      clarificationAttempts: 1,
+    });
+    vi.mocked(NutritionDiary.findOne).mockResolvedValue(pending);
+    vi.mocked(createAIEngine).mockReturnValue(fakeEngine());
+
+    await handleNutritionDiaryEntry(context(), '3 яйца');
+
+    expect(pending.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: 'я съела яйца 3 яйца',
+        status: 'filled',
+      }),
+    );
+    expect(sendTelegramMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Спасибо, уточнил! 🍽️' }),
+    );
+  });
+
+  it('продолжает уточнять, если ответ AI всё ещё неполный', async () => {
+    const pending = makeDiaryEntry({
+      id: 'diary-pending',
+      status: 'needs_clarification',
+      description: 'я съела яйца',
+      clarificationAttempts: 1,
+    });
+    vi.mocked(NutritionDiary.findOne).mockResolvedValue(pending);
+    vi.mocked(createAIEngine).mockReturnValue(
+      fakeEngine({
+        needsClarification: true,
+        missingFields: ['quantity'],
+        question: 'А сколько яиц?',
+      }),
+    );
+
+    await handleNutritionDiaryEntry(context(), 'не помню');
+
+    expect(pending.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: 'я съела яйца\nне помню',
+        clarificationAttempts: 2,
+        status: 'needs_clarification',
+      }),
+    );
+    expect(sendTelegramMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'А сколько яиц?' }),
+    );
+  });
+
+  it('после трёх попыток оставляет запись в needs_clarification и сообщает о передаче админу', async () => {
+    const pending = makeDiaryEntry({
+      id: 'diary-pending',
+      status: 'needs_clarification',
+      description: 'я съела яйца',
+      clarificationAttempts: 2,
+    });
+    vi.mocked(NutritionDiary.findOne).mockResolvedValue(pending);
+    vi.mocked(createAIEngine).mockReturnValue(
+      fakeEngine({
+        needsClarification: true,
+        missingFields: ['quantity'],
+        question: 'А сколько яиц?',
+      }),
+    );
+
+    await handleNutritionDiaryEntry(context(), 'забыла');
+
+    expect(pending.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clarificationAttempts: 3,
+      }),
+    );
+    expect(sendTelegramMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Записал как есть. Позже мы уточним детали.' }),
+    );
+  });
+
+  it('при сбое AI-проверки сохраняет запись как filled, чтобы не блокировать клиента', async () => {
+    vi.mocked(createAIEngine).mockReturnValue({
+      checkDiaryClarity: vi.fn().mockRejectedValue(new Error('AI недоступен')),
+      analyzeDiary: vi.fn(),
+      generateRecommendationText: vi.fn(),
+      generateEveningSummary: vi.fn(),
+    });
+
+    await handleNutritionDiaryEntry(context(), 'я съела яйца');
+
+    expect(NutritionDiary.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'filled',
+      }),
+    );
+    expect(logger.error).toHaveBeenCalled();
   });
 });
