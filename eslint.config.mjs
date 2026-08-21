@@ -19,6 +19,7 @@ export default defineConfig(
             'test/*.ts',
             'vitest.config.ts',
             'vitest.eval.config.ts',
+            'vitest.integration.config.ts',
           ],
           defaultProject: 'tsconfig.scripts.json',
           // Список миграций будет расти на каждом этапе roadmap — поднимаем лимит,

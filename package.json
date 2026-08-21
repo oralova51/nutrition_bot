@@ -25,6 +25,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "eval": "vitest run --config vitest.eval.config.ts",
     "db:migrate": "tsx scripts/migrate.ts up",
     "db:migrate:undo": "tsx scripts/migrate.ts down",

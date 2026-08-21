@@ -23,6 +23,9 @@ export default defineConfig({
     globals: false,
     environment: 'node',
     include: ['packages/**/*.test.ts'],
+    // Интеграционные наборы требуют настоящую БД — они живут в отдельной команде
+    // `npm run test:integration` (vitest.integration.config.ts).
+    exclude: ['**/node_modules/**', '**/dist/**', '**/*.integration.test.ts'],
     setupFiles: ['./test/setup.ts'],
     coverage: {
       provider: 'v8',
