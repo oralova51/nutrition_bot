@@ -1,0 +1,1008 @@
+{
+  "info": {
+    "name": "AI — уточнения по дневнику (ФТ-22)",
+    "description": "Проверка, будет ли бот уточнять неясную запись дневника — без Telegram и без записи в БД.\n\nЭндпоинт: POST {{baseUrl}}/internal/ai/clarity-check\nЭто тот же checkDiaryClarity, который бот вызывает перед сохранением записи.\n\n=== Как запустить ===\n1. Подними API: npm run dev:api (порт 3000). Бот не нужен.\n2. Variables коллекции:\n   - baseUrl = http://localhost:3000/api/v1\n   - adminToken = значение ADMIN_API_TOKEN из .env (без слова Bearer)\n   - firstName = имя для обращения в вопросе (по умолчанию Анна)\n3. Auth коллекции уже стоит Bearer {{adminToken}} — отдельные запросы его наследуют.\n4. Смотри поле provider в ответе:\n   - mock — эвристика (продукт + количество). Детерминированно, без сети.\n   - openai-compatible — живая модель из AI_PROVIDER / AI_MODEL. Это то, что увидит клиент.\n   Чтобы тестировать реальную модель, в .env должно быть AI_PROVIDER=openai-compatible и рабочие AI_API_KEY / AI_BASE_URL / AI_MODEL. Перезапусти API после смены.\n5. Collection Runner: папки 01 и 02 гоняются пачкой. Для живой модели поставь timeout запроса ≥ 60 с (Settings → General → Request timeout).\n\n=== Как читать ответ ===\n- needsClarification: true — клиент получил бы уточняющий вопрос (botReply).\n- needsClarification: false — клиент получил бы «Спасибо, записал!», запись ушла бы в анализ.\n- missingFields: чего не хватает (product | quantity, иногда time | calories).\n- question: формулировка модели; null, если уточнение не нужно.\n- botReply: итоговый текст в Telegram (если модель вернула пустой question, будет запасная фраза «Кажется, я не понял...»).\n\nПравило полноты (промпт модели): нужен продукт/блюдо и примерное количество («2 яйца», «тарелка», «стакан»). Калории и время не обязательны.\n\nВажно:\n- Эндпоинт ничего не пишет в БД и не шлёт сообщения в Telegram.\n- Фото в боте пока не проходят через этот check (OCR отложен) — hasPhoto здесь только для эксперимента.\n- Если живая модель недоступна, движок считает запись достаточной (чтобы не спамить клиента). Тогда на заведомо пустой фразе ты увидишь needsClarification=false — смотри логи API.\n- Mock и живая модель могут разойтись на пограничных фразах. Для «как у клиента» ориентируйся на provider=openai-compatible.\n\nПапка «Свой пример»: подставь текст в переменную customDescription и жми Send.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{adminToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string",
+      "description": "ADMIN_API_TOKEN из .env без префикса Bearer"
+    },
+    {
+      "key": "firstName",
+      "value": "Анна",
+      "type": "string",
+      "description": "Имя, с которым модель обратится в вопросе"
+    },
+    {
+      "key": "customDescription",
+      "value": "ну что-то там поела",
+      "type": "string",
+      "description": "Свой текст «как клиент» для папки 04"
+    }
+  ],
+  "item": [
+    {
+      "name": "00. Подготовка",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health",
+            "description": "Проверка, что API запущен. Не требует токена. Ожидаем {\"status\":\"ok\"}."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('API жив', function () {",
+                  "  pm.expect(pm.response.json().status).to.eql('ok');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01. Понятные записи — уточнение НЕ нужно",
+      "description": "Фразы с продуктом и количеством. Ожидание: needsClarification=false, botReply про «записал».",
+      "item": [
+        {
+          "name": "я съела 3 яйца",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"я съела 3 яйца\",\n  \"firstName\": \"{{firstName}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/ai/clarity-check",
+            "description": "Продукт + точное количество. Эталонный «понятный» пример из eval-набора."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Ответ содержит поля clarity-check', function () {",
+                  "  pm.expect(json).to.have.property('needsClarification');",
+                  "  pm.expect(json).to.have.property('missingFields');",
+                  "  pm.expect(json).to.have.property('question');",
+                  "  pm.expect(json).to.have.property('botReply');",
+                  "  pm.expect(json).to.have.property('provider');",
+                  "  pm.expect(['mock', 'openai-compatible']).to.include(json.provider);",
+                  "});",
+                  "pm.test('Уточнение НЕ нужно', function () {",
+                  "  pm.expect(json.needsClarification).to.eql(false);",
+                  "  pm.expect(json.missingFields).to.eql([]);",
+                  "  pm.expect(json.question).to.eql(null);",
+                  "  pm.expect(json.botReply).to.include('записал');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "тарелка борща на обед",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"тарелка борща на обед\",\n  \"firstName\": \"{{firstName}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/ai/clarity-check",
+            "description": "Блюдо + мера («тарелка») + время приёма. Времени достаточно как контекста, количество уже есть."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Ответ содержит поля clarity-check', function () {",
+                  "  pm.expect(json).to.have.property('needsClarification');",
+                  "  pm.expect(json).to.have.property('missingFields');",
+                  "  pm.expect(json).to.have.property('question');",
+                  "  pm.expect(json).to.have.property('botReply');",
+                  "  pm.expect(json).to.have.property('provider');",
+                  "  pm.expect(['mock', 'openai-compatible']).to.include(json.provider);",
+                  "});",
+                  "pm.test('Уточнение НЕ нужно', function () {",
+                  "  pm.expect(json.needsClarification).to.eql(false);",
+                  "  pm.expect(json.missingFields).to.eql([]);",
+                  "  pm.expect(json.question).to.eql(null);",
+                  "  pm.expect(json.botReply).to.include('записал');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "чай с печеньем, 2 чашки",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"чай с печеньем, 2 чашки\",\n  \"firstName\": \"{{firstName}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/ai/clarity-check",
+            "description": "После уточнения количества запись должна пройти без нового вопроса."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Ответ содержит поля clarity-check', function () {",
+                  "  pm.expect(json).to.have.property('needsClarification');",
+                  "  pm.expect(json).to.have.property('missingFields');",
+                  "  pm.expect(json).to.have.property('question');",
+                  "  pm.expect(json).to.have.property('botReply');",
+                  "  pm.expect(json).to.have.property('provider');",
+                  "  pm.expect(['mock', 'openai-compatible']).to.include(json.provider);",
+                  "});",
+                  "pm.test('Уточнение НЕ нужно', function () {",
+                  "  pm.expect(json.needsClarification).to.eql(false);",
+                  "  pm.expect(json.missingFields).to.eql([]);",
+                  "  pm.expect(json.question).to.eql(null);",
+                  "  pm.expect(json.botReply).to.include('записал');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "на завтрак 2 бутерброда с сыром",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"на завтрак 2 бутерброда с сыром\",\n  \"firstName\": \"{{firstName}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/ai/clarity-check",
+            "description": "Приём пищи + количество цифрой + состав. Слово «два» mock не считает количеством — поэтому здесь именно «2»."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Ответ содержит поля clarity-check', function () {",
+                  "  pm.expect(json).to.have.property('needsClarification');",
+                  "  pm.expect(json).to.have.property('missingFields');",
+                  "  pm.expect(json).to.have.property('question');",
+                  "  pm.expect(json).to.have.property('botReply');",
+                  "  pm.expect(json).to.have.property('provider');",
+                  "  pm.expect(['mock', 'openai-compatible']).to.include(json.provider);",
+                  "});",
+                  "pm.test('Уточнение НЕ нужно', function () {",
+                  "  pm.expect(json.needsClarification).to.eql(false);",
+                  "  pm.expect(json.missingFields).to.eql([]);",
+                  "  pm.expect(json.question).to.eql(null);",
+                  "  pm.expect(json.botReply).to.include('записал');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "стакан кефира",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"стакан кефира\",\n  \"firstName\": \"{{firstName}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/ai/clarity-check",
+            "description": "Напиток + объём. Калории не указаны — и не должны требоваться."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Ответ содержит поля clarity-check', function () {",
+                  "  pm.expect(json).to.have.property('needsClarification');",
+                  "  pm.expect(json).to.have.property('missingFields');",
+                  "  pm.expect(json).to.have.property('question');",
+                  "  pm.expect(json).to.have.property('botReply');",
+                  "  pm.expect(json).to.have.property('provider');",
+                  "  pm.expect(['mock', 'openai-compatible']).to.include(json.provider);",
+                  "});",
+                  "pm.test('Уточнение НЕ нужно', function () {",
+                  "  pm.expect(json.needsClarification).to.eql(false);",
+                  "  pm.expect(json.missingFields).to.eql([]);",
+                  "  pm.expect(json.question).to.eql(null);",
+                  "  pm.expect(json.botReply).to.include('записал');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02. Непонятные записи — должно прийти уточнение",
+      "description": "Неполный или расплывчатый ввод. Ожидание: needsClarification=true, в botReply — мягкий вопрос, missingFields не пустой.",
+      "item": [
+        {
+          "name": "съела",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"съела\",\n  \"firstName\": \"{{firstName}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/ai/clarity-check",
+            "description": "Нет ни продукта, ни количества. Должен спросить, что именно."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Ответ содержит поля clarity-check', function () {",
+                  "  pm.expect(json).to.have.property('needsClarification');",
+                  "  pm.expect(json).to.have.property('missingFields');",
+                  "  pm.expect(json).to.have.property('question');",
+                  "  pm.expect(json).to.have.property('botReply');",
+                  "  pm.expect(json).to.have.property('provider');",
+                  "  pm.expect(['mock', 'openai-compatible']).to.include(json.provider);",
+                  "});",
+                  "pm.test('Должно прийти уточнение', function () {",
+                  "  pm.expect(json.needsClarification).to.eql(true);",
+                  "  pm.expect(json.missingFields.length).to.be.above(0);",
+                  "  pm.expect(json.botReply).to.be.a('string').and.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "яйца",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"яйца\",\n  \"firstName\": \"{{firstName}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/ai/clarity-check",
+            "description": "Продукт без количества. Типичный кейс «я съела яйца» / одно слово."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Ответ содержит поля clarity-check', function () {",
+                  "  pm.expect(json).to.have.property('needsClarification');",
+                  "  pm.expect(json).to.have.property('missingFields');",
+                  "  pm.expect(json).to.have.property('question');",
+                  "  pm.expect(json).to.have.property('botReply');",
+                  "  pm.expect(json).to.have.property('provider');",
+                  "  pm.expect(['mock', 'openai-compatible']).to.include(json.provider);",
+                  "});",
+                  "pm.test('Должно прийти уточнение', function () {",
+                  "  pm.expect(json.needsClarification).to.eql(true);",
+                  "  pm.expect(json.missingFields.length).to.be.above(0);",
+                  "  pm.expect(json.botReply).to.be.a('string').and.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "я съела яйца",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"я съела яйца\",\n  \"firstName\": \"{{firstName}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/ai/clarity-check",
+            "description": "Продукт есть, количества нет. Eval-эталон: missingFields содержит quantity."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Ответ содержит поля clarity-check', function () {",
+                  "  pm.expect(json).to.have.property('needsClarification');",
+                  "  pm.expect(json).to.have.property('missingFields');",
+                  "  pm.expect(json).to.have.property('question');",
+                  "  pm.expect(json).to.have.property('botReply');",
+                  "  pm.expect(json).to.have.property('provider');",
+                  "  pm.expect(['mock', 'openai-compatible']).to.include(json.provider);",
+                  "});",
+                  "pm.test('Должно прийти уточнение', function () {",
+                  "  pm.expect(json.needsClarification).to.eql(true);",
+                  "  pm.expect(json.missingFields.length).to.be.above(0);",
+                  "  pm.expect(json.botReply).to.be.a('string').and.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "3",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"3\",\n  \"firstName\": \"{{firstName}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/ai/clarity-check",
+            "description": "Только число, продукта нет."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Ответ содержит поля clarity-check', function () {",
+                  "  pm.expect(json).to.have.property('needsClarification');",
+                  "  pm.expect(json).to.have.property('missingFields');",
+                  "  pm.expect(json).to.have.property('question');",
+                  "  pm.expect(json).to.have.property('botReply');",
+                  "  pm.expect(json).to.have.property('provider');",
+                  "  pm.expect(['mock', 'openai-compatible']).to.include(json.provider);",
+                  "});",
+                  "pm.test('Должно прийти уточнение', function () {",
+                  "  pm.expect(json.needsClarification).to.eql(true);",
+                  "  pm.expect(json.missingFields.length).to.be.above(0);",
+                  "  pm.expect(json.botReply).to.be.a('string').and.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "а",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"а\",\n  \"firstName\": \"{{firstName}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/ai/clarity-check",
+            "description": "Мусор / слишком коротко."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Ответ содержит поля clarity-check', function () {",
+                  "  pm.expect(json).to.have.property('needsClarification');",
+                  "  pm.expect(json).to.have.property('missingFields');",
+                  "  pm.expect(json).to.have.property('question');",
+                  "  pm.expect(json).to.have.property('botReply');",
+                  "  pm.expect(json).to.have.property('provider');",
+                  "  pm.expect(['mock', 'openai-compatible']).to.include(json.provider);",
+                  "});",
+                  "pm.test('Должно прийти уточнение', function () {",
+                  "  pm.expect(json.needsClarification).to.eql(true);",
+                  "  pm.expect(json.missingFields.length).to.be.above(0);",
+                  "  pm.expect(json.botReply).to.be.a('string').and.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "чай с печеньем",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"чай с печеньем\",\n  \"firstName\": \"{{firstName}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/ai/clarity-check",
+            "description": "Блюдо без объёма. Должен спросить «сколько / какая порция»."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Ответ содержит поля clarity-check', function () {",
+                  "  pm.expect(json).to.have.property('needsClarification');",
+                  "  pm.expect(json).to.have.property('missingFields');",
+                  "  pm.expect(json).to.have.property('question');",
+                  "  pm.expect(json).to.have.property('botReply');",
+                  "  pm.expect(json).to.have.property('provider');",
+                  "  pm.expect(['mock', 'openai-compatible']).to.include(json.provider);",
+                  "});",
+                  "pm.test('Должно прийти уточнение', function () {",
+                  "  pm.expect(json.needsClarification).to.eql(true);",
+                  "  pm.expect(json.missingFields.length).to.be.above(0);",
+                  "  pm.expect(json.botReply).to.be.a('string').and.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "рыба с овощами",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"рыба с овощами\",\n  \"firstName\": \"{{firstName}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/ai/clarity-check",
+            "description": "Продукты без количества."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Ответ содержит поля clarity-check', function () {",
+                  "  pm.expect(json).to.have.property('needsClarification');",
+                  "  pm.expect(json).to.have.property('missingFields');",
+                  "  pm.expect(json).to.have.property('question');",
+                  "  pm.expect(json).to.have.property('botReply');",
+                  "  pm.expect(json).to.have.property('provider');",
+                  "  pm.expect(['mock', 'openai-compatible']).to.include(json.provider);",
+                  "});",
+                  "pm.test('Должно прийти уточнение', function () {",
+                  "  pm.expect(json.needsClarification).to.eql(true);",
+                  "  pm.expect(json.missingFields.length).to.be.above(0);",
+                  "  pm.expect(json.botReply).to.be.a('string').and.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "что-то перекусила",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"что-то перекусила\",\n  \"firstName\": \"{{firstName}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/ai/clarity-check",
+            "description": "Размытая формулировка без продукта."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Ответ содержит поля clarity-check', function () {",
+                  "  pm.expect(json).to.have.property('needsClarification');",
+                  "  pm.expect(json).to.have.property('missingFields');",
+                  "  pm.expect(json).to.have.property('question');",
+                  "  pm.expect(json).to.have.property('botReply');",
+                  "  pm.expect(json).to.have.property('provider');",
+                  "  pm.expect(['mock', 'openai-compatible']).to.include(json.provider);",
+                  "});",
+                  "pm.test('Должно прийти уточнение', function () {",
+                  "  pm.expect(json.needsClarification).to.eql(true);",
+                  "  pm.expect(json.missingFields.length).to.be.above(0);",
+                  "  pm.expect(json.botReply).to.be.a('string').and.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "ну обычное",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"ну обычное\",\n  \"firstName\": \"{{firstName}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/ai/clarity-check",
+            "description": "Невозможно понять содержимое приёма пищи."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Ответ содержит поля clarity-check', function () {",
+                  "  pm.expect(json).to.have.property('needsClarification');",
+                  "  pm.expect(json).to.have.property('missingFields');",
+                  "  pm.expect(json).to.have.property('question');",
+                  "  pm.expect(json).to.have.property('botReply');",
+                  "  pm.expect(json).to.have.property('provider');",
+                  "  pm.expect(['mock', 'openai-compatible']).to.include(json.provider);",
+                  "});",
+                  "pm.test('Должно прийти уточнение', function () {",
+                  "  pm.expect(json.needsClarification).to.eql(true);",
+                  "  pm.expect(json.missingFields.length).to.be.above(0);",
+                  "  pm.expect(json.botReply).to.be.a('string').and.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03. Спорные — смотри глазами",
+      "description": "Пограничные фразы: mock-эвристика и живая модель могут ответить по-разному. Жёстких assert на needsClarification нет — смотри botReply и provider.",
+      "item": [
+        {
+          "name": "овсянка с бананом 350 ккал",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"овсянка с бананом 350 ккал\",\n  \"firstName\": \"{{firstName}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/ai/clarity-check",
+            "description": "Mock считает цифру количеством и пропускает. Живая модель по промпту может всё ещё спросить порцию: калории не заменяют количество."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Ответ содержит поля clarity-check', function () {",
+                  "  pm.expect(json).to.have.property('needsClarification');",
+                  "  pm.expect(json).to.have.property('missingFields');",
+                  "  pm.expect(json).to.have.property('question');",
+                  "  pm.expect(json).to.have.property('botReply');",
+                  "  pm.expect(json).to.have.property('provider');",
+                  "  pm.expect(['mock', 'openai-compatible']).to.include(json.provider);",
+                  "});",
+                  "console.log('needsClarification =', json.needsClarification);",
+                  "console.log('missingFields =', json.missingFields);",
+                  "console.log('botReply =', json.botReply);",
+                  "console.log('provider =', json.provider);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "немного салата",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"немного салата\",\n  \"firstName\": \"{{firstName}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/ai/clarity-check",
+            "description": "Есть размытое количество («немного»). Промпт это допускает; mock может не узнать слово «немного»."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Ответ содержит поля clarity-check', function () {",
+                  "  pm.expect(json).to.have.property('needsClarification');",
+                  "  pm.expect(json).to.have.property('missingFields');",
+                  "  pm.expect(json).to.have.property('question');",
+                  "  pm.expect(json).to.have.property('botReply');",
+                  "  pm.expect(json).to.have.property('provider');",
+                  "  pm.expect(['mock', 'openai-compatible']).to.include(json.provider);",
+                  "});",
+                  "console.log('needsClarification =', json.needsClarification);",
+                  "console.log('missingFields =', json.missingFields);",
+                  "console.log('botReply =', json.botReply);",
+                  "console.log('provider =', json.provider);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "как обычно каша",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"как обычно каша\",\n  \"firstName\": \"{{firstName}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/ai/clarity-check",
+            "description": "Продукт есть, количества нет, но клиент отсылает к привычке. Модель может и спросить, и принять."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Ответ содержит поля clarity-check', function () {",
+                  "  pm.expect(json).to.have.property('needsClarification');",
+                  "  pm.expect(json).to.have.property('missingFields');",
+                  "  pm.expect(json).to.have.property('question');",
+                  "  pm.expect(json).to.have.property('botReply');",
+                  "  pm.expect(json).to.have.property('provider');",
+                  "  pm.expect(['mock', 'openai-compatible']).to.include(json.provider);",
+                  "});",
+                  "console.log('needsClarification =', json.needsClarification);",
+                  "console.log('missingFields =', json.missingFields);",
+                  "console.log('botReply =', json.botReply);",
+                  "console.log('provider =', json.provider);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04. Свой пример",
+      "description": "Подставь текст в переменную customDescription (коллекция → Variables) и отправь. Удобно гонять реальные формулировки клиентов.",
+      "item": [
+        {
+          "name": "Свой текст из переменной customDescription",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"{{customDescription}}\",\n  \"firstName\": \"{{firstName}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/ai/clarity-check",
+            "description": "Тело берёт {{customDescription}}. Поменяй переменную и жми Send — без правки запроса."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Ответ содержит поля clarity-check', function () {",
+                  "  pm.expect(json).to.have.property('needsClarification');",
+                  "  pm.expect(json).to.have.property('missingFields');",
+                  "  pm.expect(json).to.have.property('question');",
+                  "  pm.expect(json).to.have.property('botReply');",
+                  "  pm.expect(json).to.have.property('provider');",
+                  "  pm.expect(['mock', 'openai-compatible']).to.include(json.provider);",
+                  "});",
+                  "console.log('needsClarification =', json.needsClarification);",
+                  "console.log('missingFields =', json.missingFields);",
+                  "console.log('botReply =', json.botReply);",
+                  "console.log('provider =', json.provider);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05. Ошибки",
+      "item": [
+        {
+          "name": "Пустое описание → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/ai/clarity-check",
+            "description": "Пустая строка не проходит валидацию. В Telegram такое сообщение до дневника не дойдёт."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test('INVALID_BODY', function () {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('INVALID_BODY');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Без токена → 401",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"я съела яйца\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/ai/clarity-check",
+            "description": "Эндпоинт закрыт admin-токеном, как остальные internal/admin ручки."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});",
+                  "pm.test('UNAUTHORIZED', function () {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('UNAUTHORIZED');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

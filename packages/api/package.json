@@ -13,7 +13,8 @@
     }
   },
   "dependencies": {
-    "@nutrition-bot/shared": "*"
+    "@nutrition-bot/shared": "*",
+    "@nutrition-bot/ai": "*"
   },
   "scripts": {
     "build": "tsc -b .",

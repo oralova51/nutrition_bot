@@ -529,6 +529,57 @@ Auth: заголовок `X-Internal-Token`.
 
 Коды ошибок: `LINK_EXPIRED`, `ALREADY_USED`, `INVALID_CODE`, `ENROLLMENT_CANCELLED`.
 
+### 5.1 Playground: проверка ИИ-уточнений (ФТ-22)
+
+Локальный эндпоинт, чтобы прогнать `checkDiaryClarity` из Postman без Telegram и без записи в БД. Это тот же вызов, что делает бот перед сохранением текстовой записи дневника.
+
+Auth: `Authorization: Bearer <ADMIN_API_TOKEN>` (как у admin-эндпоинтов).
+
+#### `POST /internal/ai/clarity-check`
+
+**Body:**
+
+```json
+{
+  "description": "я съела яйца",
+  "firstName": "Анна",
+  "hasPhoto": false,
+  "approxCalories": null
+}
+```
+
+| Поле | Обязательное | Описание |
+|------|--------------|----------|
+| `description` | да | Текст «как клиент написал в чат» |
+| `firstName` | нет | Имя для обращения в вопросе |
+| `hasPhoto` | нет | `true`/`false`; в боте фото пока **не** проходят через этот check (OCR отложен) |
+| `approxCalories` | нет | Положительное целое, если клиент указал ккал |
+
+**Response 200:**
+
+```json
+{
+  "needsClarification": true,
+  "missingFields": ["quantity"],
+  "question": "Сколько яиц примерно?",
+  "botReply": "Сколько яиц примерно?",
+  "provider": "openai-compatible"
+}
+```
+
+| Поле | Смысл |
+|------|--------|
+| `needsClarification` | `true` — клиент получил бы уточнение; `false` — «Спасибо, записал!» и дальше анализ |
+| `missingFields` | `product` \| `quantity` (реже `time` \| `calories`) |
+| `question` | Формулировка модели; `null`, если уточнение не нужно |
+| `botReply` | Итоговый текст в Telegram (если `question` пустой — запасная фраза «Кажется, я не понял. Можете переформулировать?») |
+| `provider` | `mock` (эвристика) или `openai-compatible` (живая модель из `AI_PROVIDER`) |
+
+**400** `INVALID_BODY` — пустой `description` или неверный тип опциональных полей.  
+**401** `UNAUTHORIZED` — нет или неверный токен.
+
+Коллекция: `postman/ai-clarity.postman_collection.json`.
+
 ---
 
 ## 6. Telegram Bot API — методы проекта
@@ -674,6 +725,9 @@ Admin API **не вызывает** Telegram напрямую. Ниже — ме
 
 В Postman: папка «После завершения — повторный курс» (`scheduler-jobs`) и «Create enrollment for existing client» (`stage9-dashboards`).
 
+Дополнительно для ФТ-22 (ИИ-уточнения по дневнику): коллекция `postman/ai-clarity.postman_collection.json` —
+`POST {{baseUrl}}/internal/ai/clarity-check` с `{ "description": "..." }`. БД не трогает, бот не нужен. Смотри поле `botReply` — это текст, который увидел бы клиент.
+
 ---
 
 ## 9. Связь с функциональными требованиями
@@ -686,6 +740,7 @@ Admin API **не вызывает** Telegram напрямую. Ниже — ме
 | ФТ-10 | `status=inactive`, `disabledReason=inactivity` |
 | ФТ-24 | Scheduler: `POST /internal/jobs/evening-summary`; Specialist: `GET .../reports?type=daily` |
 | ФТ-13, ФТ-14 | Scheduler: `POST /internal/jobs/course-completion`; Specialist: `GET .../reports?type=final` |
+| ФТ-22 | Playground: `POST /internal/ai/clarity-check` (Postman `ai-clarity`) |
 | CJM (alt) | `GET /admin/enrollments/expired-links` |
 
 ---

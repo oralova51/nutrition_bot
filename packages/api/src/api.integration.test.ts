@@ -6,6 +6,7 @@
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { resetAIEngine } from '@nutrition-bot/ai';
 import {
   ClientEnrollment,
   closeDatabaseConnection,
@@ -393,5 +394,66 @@ describe('ссылки приглашения', () => {
     expect(regenerated.status).toBe(201);
     expect(view.active?.id).not.toBe(linkId);
     expect(view.history).toEqual([expect.objectContaining({ id: linkId, status: 'expired' })]);
+  });
+});
+
+describe('playground ИИ-уточнений', () => {
+  beforeAll(() => {
+    process.env.AI_PROVIDER = 'mock';
+    resetAIEngine();
+  });
+
+  afterAll(() => {
+    resetAIEngine();
+  });
+
+  it('требует Authorization', async () => {
+    const { status, body } = await request('POST', '/internal/ai/clarity-check', {
+      token: null,
+      body: { description: 'я съела яйца' },
+    });
+    const { error } = body as ApiErrorBody;
+
+    expect(status).toBe(401);
+    expect(error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('просит уточнение по неполной записи', async () => {
+    const { status, body } = await request('POST', '/internal/ai/clarity-check', {
+      body: { description: 'я съела яйца', firstName: 'Анна' },
+    });
+
+    expect(status).toBe(200);
+    expect(body).toMatchObject({
+      needsClarification: true,
+      provider: 'mock',
+    });
+    expect((body as { missingFields: string[] }).missingFields).toContain('quantity');
+    expect((body as { botReply: string }).botReply.length).toBeGreaterThan(0);
+  });
+
+  it('не уточняет полную запись', async () => {
+    const { status, body } = await request('POST', '/internal/ai/clarity-check', {
+      body: { description: 'я съела 3 яйца' },
+    });
+
+    expect(status).toBe(200);
+    expect(body).toMatchObject({
+      needsClarification: false,
+      missingFields: [],
+      question: null,
+      botReply: 'Спасибо, записал! 🍽️',
+      provider: 'mock',
+    });
+  });
+
+  it('отклоняет пустое описание', async () => {
+    const { status, body } = await request('POST', '/internal/ai/clarity-check', {
+      body: { description: '' },
+    });
+    const { error } = body as ApiErrorBody;
+
+    expect(status).toBe(400);
+    expect(error.code).toBe('INVALID_BODY');
   });
 });

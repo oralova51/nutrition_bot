@@ -8,6 +8,7 @@ import { resolveAdminApiToken, resolveBotUsername } from './config.js';
 import { getHealthStatus } from './health.js';
 import { ApiError, sendApiError, sendJson } from './http.js';
 import { findRoute, type RouteDefinition } from './router.js';
+import { createAiClarityRoutes } from './routes/ai-clarity.js';
 import { createClientRoutes } from './routes/clients.js';
 import {
   createAdminDashboardRoutes,
@@ -40,6 +41,7 @@ function buildRoutes(): RouteDefinition[] {
     ...createClientRoutes(botUsername),
     ...createAdminDashboardRoutes(botUsername),
     ...createSpecialistDashboardRoutes(),
+    ...createAiClarityRoutes(),
   ];
 }
 
