@@ -20,6 +20,11 @@ vi.mock('../handlers/settings-handler.js', () => ({
   startSettingsWizard: vi.fn(),
 }));
 
+vi.mock('./enrollment-context.js', () => ({
+  closeDuplicateOnboardings: vi.fn(),
+  findEnrollmentForClient: vi.fn(),
+}));
+
 import { Client, Questionnaire, sendTelegramMessage } from '@nutrition-bot/shared';
 import { startSettingsWizard } from '../handlers/settings-handler.js';
 
@@ -48,6 +53,37 @@ describe('startOnboarding', () => {
     expect(sendTelegramMessage).not.toHaveBeenCalled();
     expect(ctx.reply).not.toHaveBeenCalled();
     expect(startSettingsWizard).not.toHaveBeenCalled();
+  });
+
+  it('does not resend welcome when questionnaire is already in_progress', async () => {
+    const enrollment = {
+      id: 'enrollment-1',
+      clientId: 'client-1',
+      onboardingStatus: 'in_progress',
+      update: vi.fn(),
+    } as unknown as ClientEnrollment;
+
+    vi.mocked(Questionnaire.findOne).mockResolvedValue({
+      id: 'q-1',
+      currentQuestion: 1,
+      answers: { name: 'Оля' },
+      status: 'in_progress',
+    } as never);
+
+    const ctx = {
+      client: { id: 'client-1', telegramId: '123' },
+      reply: vi.fn(),
+    } as unknown as BotContext;
+
+    await startOnboarding(ctx, enrollment);
+
+    expect(enrollment.update).not.toHaveBeenCalled();
+    expect(sendTelegramMessage).not.toHaveBeenCalled();
+    expect(Questionnaire.create).not.toHaveBeenCalled();
+    expect(ctx.reply).toHaveBeenCalledWith(
+      expect.stringContaining('Вопрос 2 из 2'),
+      expect.anything(),
+    );
   });
 
   it('delegates to settings wizard when settings_pending', async () => {

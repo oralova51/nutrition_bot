@@ -9,11 +9,15 @@ vi.mock('@nutrition-bot/shared', async (importOriginal) => {
   return {
     ...actual,
     Questionnaire: { findAll: vi.fn() },
+    ClientEnrollment: {
+      ...actual.ClientEnrollment,
+      findOne: vi.fn().mockResolvedValue(null),
+    },
     sendTelegramMessageWithRetry: vi.fn(),
   };
 });
 
-import { Questionnaire, sendTelegramMessageWithRetry } from '@nutrition-bot/shared';
+import { ClientEnrollment, Questionnaire, sendTelegramMessageWithRetry } from '@nutrition-bot/shared';
 import {
   makeClient,
   makeEnrollment,
@@ -37,6 +41,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
   vi.mocked(sendTelegramMessageWithRetry).mockResolvedValue({ telegramMessageId: 1 } as never);
+  vi.mocked(ClientEnrollment.findOne).mockResolvedValue(null);
 });
 
 afterEach(() => {
@@ -59,19 +64,41 @@ describe('runQuestionnaireReminderJob', () => {
     expect(vi.mocked(sendTelegramMessageWithRetry).mock.calls[0]?.[0]?.text).toContain('вопросе 4');
   });
 
-  it('берёт анкеты, где ответа не было дольше порога и напоминание ещё не уходило', async () => {
+  it('берёт анкеты, где ответа и напоминания не было дольше порога', async () => {
     vi.mocked(Questionnaire.findAll).mockResolvedValue([]);
 
-    await runQuestionnaireReminderJob(makeTestLogger());
+    await runQuestionnaireReminderJob(makeTestLogger(), { inactivityMinutes: 1440 });
 
     const where = vi.mocked(Questionnaire.findAll).mock.calls[0]?.[0]?.where as {
       status: string;
-      lastReminderAt: null;
-      [Op.or]: [{ lastAnswerAt: null }, { lastAnswerAt: { [Op.lt]: Date } }];
+      [Op.and]: Array<{
+        [Op.or]: Array<
+          | { lastAnswerAt: null }
+          | { lastAnswerAt: { [Op.lt]: Date } }
+          | { lastReminderAt: null }
+          | { lastReminderAt: { [Op.lt]: Date } }
+        >;
+      }>;
     };
     expect(where.status).toBe('in_progress');
-    expect(where.lastReminderAt).toBeNull();
-    expect(where[Op.or][1].lastAnswerAt[Op.lt].toISOString()).toBe('2026-01-15T08:58:00.000Z');
+    const lastAnswer = where[Op.and][0]?.[Op.or][1] as { lastAnswerAt: { [Op.lt]: Date } };
+    const lastReminder = where[Op.and][1]?.[Op.or][1] as { lastReminderAt: { [Op.lt]: Date } };
+    expect(lastAnswer.lastAnswerAt[Op.lt].toISOString()).toBe('2026-01-14T09:00:00.000Z');
+    expect(lastReminder.lastReminderAt[Op.lt].toISOString()).toBe('2026-01-14T09:00:00.000Z');
+  });
+
+  it('принимает порог молчания из аргумента job (для отладки)', async () => {
+    vi.mocked(Questionnaire.findAll).mockResolvedValue([]);
+
+    await runQuestionnaireReminderJob(makeTestLogger(), { inactivityMinutes: 2 });
+
+    const where = vi.mocked(Questionnaire.findAll).mock.calls[0]?.[0]?.where as {
+      [Op.and]: Array<{
+        [Op.or]: Array<{ lastAnswerAt: { [Op.lt]: Date } } | { lastAnswerAt: null }>;
+      }>;
+    };
+    const lastAnswer = where[Op.and][0]?.[Op.or][1] as { lastAnswerAt: { [Op.lt]: Date } };
+    expect(lastAnswer.lastAnswerAt[Op.lt].toISOString()).toBe('2026-01-15T08:58:00.000Z');
   });
 
   it('фиксирует lastReminderAt, чтобы не напомнить дважды до следующего ответа', async () => {
@@ -103,5 +130,16 @@ describe('runQuestionnaireReminderJob', () => {
     await runQuestionnaireReminderJob(makeTestLogger());
 
     expect(sendTelegramMessageWithRetry).not.toHaveBeenCalled();
+  });
+
+  it('не напоминает, если у клиента уже есть пройденный онбординг на другом курсе', async () => {
+    const questionnaire = arrangeQuestionnaire();
+    vi.mocked(Questionnaire.findAll).mockResolvedValue([questionnaire] as never);
+    vi.mocked(ClientEnrollment.findOne).mockResolvedValue(makeEnrollment() as never);
+
+    await runQuestionnaireReminderJob(makeTestLogger());
+
+    expect(sendTelegramMessageWithRetry).not.toHaveBeenCalled();
+    expect(questionnaire.update).not.toHaveBeenCalled();
   });
 });

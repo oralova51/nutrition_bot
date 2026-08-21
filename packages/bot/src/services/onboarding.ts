@@ -14,6 +14,7 @@ import {
 import { InlineKeyboard } from 'grammy';
 import { startSettingsWizard } from '../handlers/settings-handler.js';
 import type { BotContext } from '../context.js';
+import { closeDuplicateOnboardings } from './enrollment-context.js';
 
 /** id вопроса «Как к вам обращаться?» — ответ должен попасть в Client.firstName. */
 const PREFERRED_NAME_QUESTION_ID = 'name';
@@ -176,10 +177,16 @@ function toggleMultiValue(
 }
 
 async function loadOrCreateQuestionnaire(enrollment: ClientEnrollment): Promise<Questionnaire> {
-  const questionnaire = await Questionnaire.findOne({
+  const inProgress = await Questionnaire.findOne({
     where: { clientEnrollmentId: enrollment.id, status: 'in_progress' },
+    order: [['currentQuestion', 'DESC']],
   });
-  if (questionnaire) return questionnaire;
+  if (inProgress) return inProgress;
+
+  const completed = await Questionnaire.findOne({
+    where: { clientEnrollmentId: enrollment.id, status: 'completed' },
+  });
+  if (completed) return completed;
 
   return Questionnaire.create({
     clientEnrollmentId: enrollment.id,
@@ -314,11 +321,11 @@ export async function startOnboarding(
     return;
   }
 
-  if (enrollment.onboardingStatus === 'pending') {
+  const isFirstStart = enrollment.onboardingStatus === 'pending';
+  if (isFirstStart) {
     await enrollment.update({ onboardingStatus: 'in_progress' });
+    await sendWelcomeMessage(ctx);
   }
-
-  await sendWelcomeMessage(ctx);
 
   const questionnaire = await loadOrCreateQuestionnaire(enrollment);
   await askCurrentQuestion(ctx, questionnaire);
@@ -546,5 +553,6 @@ export async function completeQuestionnaire(
   enrollment: ClientEnrollment,
 ): Promise<void> {
   await enrollment.update({ onboardingStatus: 'settings_pending' });
+  await closeDuplicateOnboardings(enrollment.clientId, enrollment.id);
   await ctx.reply(COMPLETED_MESSAGE);
 }

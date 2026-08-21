@@ -14,6 +14,7 @@ import {
   TIME_SLOTS,
   toggleNotificationType,
 } from '../services/notification-settings.js';
+import { closeDuplicateOnboardings } from '../services/enrollment-context.js';
 
 const WIZARD_INTRO = 'Давайте настроим уведомления, чтобы я не беспокоил вас в неудобное время.';
 
@@ -125,6 +126,9 @@ export async function handleSettingsCallback(ctx: CallbackQueryContext<BotContex
       }
       if (isWizard) {
         await enrollment?.update({ onboardingStatus: 'completed' });
+        if (enrollment) {
+          await closeDuplicateOnboardings(ctx.client.id, enrollment.id);
+        }
         await ctx.editMessageText(
           `Настройки сохранены 🎉\n\n${formatSettingsMessage(settings)}\n\n${WIZARD_DONE_SUFFIX}`,
           { reply_markup: { inline_keyboard: [] } },

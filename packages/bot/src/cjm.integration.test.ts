@@ -143,6 +143,7 @@ interface SeedOptions {
   linkExpiresAt?: Date;
   linkStatus?: 'active' | 'used' | 'revoked' | 'expired';
   telegramId?: string | null;
+  usedByTelegramId?: string | null;
 }
 
 interface Seeded {
@@ -184,7 +185,12 @@ async function seedInvitedClient(options: SeedOptions = {}): Promise<Seeded> {
     expiresAt: options.linkExpiresAt ?? new Date(Date.now() + LINK_LIFETIME_MS),
     ...(options.linkStatus ? { status: options.linkStatus } : {}),
     // Констрейнт enrollment_links_used_at_consistency: status='used' ⇔ used_at задан.
-    ...(options.linkStatus === 'used' ? { usedAt: new Date() } : {}),
+    ...(options.linkStatus === 'used'
+      ? {
+          usedAt: new Date(),
+          ...(options.usedByTelegramId ? { usedByTelegramId: options.usedByTelegramId } : {}),
+        }
+      : {}),
   });
 
   return { clientId: client.id, enrollmentId: enrollment.id, linkId: link.id };
@@ -403,6 +409,79 @@ describe('активация ссылки-приглашения', () => {
     const fake = await sendStart('');
 
     expect(fake.replies.at(0)).toContain('персональная ссылка-приглашение');
+  });
+
+  it('повторный переход по своей ссылке продолжает анкету, а не начинает заново', async () => {
+    await seedInvitedClient();
+    await sendStart(`enr_${LINK_CODE}`);
+    await sendText('Оля');
+    vi.mocked(sendTelegramMessage).mockClear();
+
+    const again = await sendStart(`enr_${LINK_CODE}`);
+
+    expect(again.replies.some((text) => text.includes('уже была использована'))).toBe(false);
+    expect(again.replies.some((text) => text.includes('вы подключены к курсу'))).toBe(false);
+    expect(again.replies.at(-1)).toContain('Вопрос 2 из 10');
+    expect(sendTelegramMessage).not.toHaveBeenCalled();
+    await expect(Questionnaire.count()).resolves.toBe(1);
+    expect((await Questionnaire.findOne())?.currentQuestion).toBe(1);
+  });
+
+  it('повторный /start без ссылки продолжает с текущего вопроса', async () => {
+    await seedInvitedClient();
+    await sendStart(`enr_${LINK_CODE}`);
+    await sendText('Оля');
+
+    const again = await sendStart('');
+
+    expect(again.replies.at(-1)).toContain('Вопрос 2 из 10');
+    expect(again.replies.some((text) => text.includes('Привет снова'))).toBe(false);
+    expect((await Questionnaire.findOne())?.currentQuestion).toBe(1);
+  });
+
+  it('после онбординга параллельный in_progress enrollment не перехватывает дневник', async () => {
+    const seeded = await seedInvitedClient({
+      onboardingStatus: 'completed',
+      telegramId: TELEGRAM_ID.toString(),
+      linkStatus: 'used',
+      usedByTelegramId: TELEGRAM_ID.toString(),
+    });
+    await sendStart(`enr_${LINK_CODE}`);
+
+    const extraCourse = await Course.create({
+      name: 'Дубль курса',
+      durationDays: 30,
+      startDate: '2026-04-01',
+      endDate: '2026-05-01',
+    });
+    const extraEnrollment = await ClientEnrollment.create({
+      clientId: seeded.clientId,
+      courseId: extraCourse.id,
+      startDate: '2026-04-01',
+      endDate: '2026-05-01',
+      onboardingStatus: 'in_progress',
+    });
+    await Questionnaire.create({
+      clientEnrollmentId: extraEnrollment.id,
+      clientId: seeded.clientId,
+      answers: {},
+      currentQuestion: 0,
+      status: 'in_progress',
+    });
+
+    const fake = await sendText('съела плитку молочной шоколадки, потому что стрессовала');
+
+    expect(fake.replies.join('\n')).not.toContain('Вопрос');
+    await expect(
+      NutritionDiary.count({ where: { clientEnrollmentId: seeded.enrollmentId } }),
+    ).resolves.toBe(1);
+    await expect(
+      NutritionDiary.count({ where: { clientEnrollmentId: extraEnrollment.id } }),
+    ).resolves.toBe(0);
+    expect(
+      (await Questionnaire.findOne({ where: { clientEnrollmentId: extraEnrollment.id } }))
+        ?.currentQuestion,
+    ).toBe(0);
   });
 });
 

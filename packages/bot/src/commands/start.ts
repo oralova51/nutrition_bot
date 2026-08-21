@@ -8,6 +8,7 @@ import type { Logger } from 'pino';
 import { NotificationSettings, type ClientEnrollment } from '@nutrition-bot/shared';
 import type { BotContext } from '../context.js';
 import { startSettingsWizard } from '../handlers/settings-handler.js';
+import { findEnrollmentForClient } from '../services/enrollment-context.js';
 import {
   activateEnrollmentLink,
   type ActivationErrorCode,
@@ -43,28 +44,36 @@ const INTERNAL_ERROR_MESSAGE =
   'Что-то пошло не так при подключении. Попробуйте ещё раз чуть позже или обратитесь к администратору студии.';
 
 /**
- * После активации ссылки ведём клиента по фактическому onboardingStatus.
- * Для продления (completed) анкету не запускаем — сразу дневник.
+ * Ведём клиента по фактическому onboardingStatus.
+ * Первая активация ссылки показывает «вы подключены»; повторный /start только
+ * продолжает текущий шаг и не запускает анкету заново.
  */
-async function continueAfterActivation(
+async function continueSession(
   ctx: CommandContext<BotContext>,
   enrollment: ClientEnrollment,
+  isNewActivation: boolean,
 ): Promise<void> {
   switch (enrollment.onboardingStatus) {
     case 'completed':
-      await ctx.reply(RENEWAL_READY_MESSAGE);
+      await ctx.reply(isNewActivation ? RENEWAL_READY_MESSAGE : WELCOME_BACK_MESSAGE);
       return;
     case 'settings_pending':
-      await ctx.reply(ACTIVATION_SUCCESS_MESSAGE);
+      if (isNewActivation) {
+        await ctx.reply(ACTIVATION_SUCCESS_MESSAGE);
+      }
       await startSettingsWizard(ctx);
       return;
     case 'in_progress':
-      await ctx.reply(ACTIVATION_SUCCESS_MESSAGE);
+      if (isNewActivation) {
+        await ctx.reply(ACTIVATION_SUCCESS_MESSAGE);
+      }
       await continueQuestionnaire(ctx, enrollment);
       return;
     case 'pending':
     default:
-      await ctx.reply(ACTIVATION_SUCCESS_MESSAGE);
+      if (isNewActivation) {
+        await ctx.reply(ACTIVATION_SUCCESS_MESSAGE);
+      }
       await startOnboarding(ctx, enrollment);
   }
 }
@@ -86,7 +95,11 @@ export function createStartHandler(
         if (settings && !settings.enabled) {
           await settings.update({ enabled: true, disabledReason: null });
         }
-        await ctx.reply(WELCOME_BACK_MESSAGE);
+        if (ctx.enrollment) {
+          await continueSession(ctx, ctx.enrollment, false);
+        } else {
+          await ctx.reply(WELCOME_BACK_MESSAGE);
+        }
       } else {
         await ctx.reply(AWAITING_LINK_MESSAGE);
       }
@@ -113,12 +126,16 @@ export function createStartHandler(
             enrollmentId: result.enrollment.id,
             clientId: result.clientId,
             onboardingStatus: result.enrollment.onboardingStatus,
+            resumed: result.resumed,
           },
-          'Ссылка-приглашение активирована',
+          result.resumed
+            ? 'Повторный переход по своей ссылке-приглашению'
+            : 'Ссылка-приглашение активирована',
         );
         ctx.client = result.client;
-        ctx.enrollment = result.enrollment;
-        await continueAfterActivation(ctx, result.enrollment);
+        ctx.enrollment = (await findEnrollmentForClient(result.client.id)) ?? result.enrollment;
+        const isNewActivation = !result.resumed && ctx.enrollment.id === result.enrollment.id;
+        await continueSession(ctx, ctx.enrollment, isNewActivation);
         return;
       }
 

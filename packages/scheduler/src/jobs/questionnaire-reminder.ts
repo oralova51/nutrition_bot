@@ -1,5 +1,6 @@
-// Напоминание о брошенной анкете (roadmap 3.14, отложено до 4.1).
-// Если клиент не отвечал на вопросы более N минут — отправляем мягкое напоминание.
+// Напоминание о брошенной анкете (roadmap 3.14, ФТ-2).
+// Если клиент не отвечает дольше N часов — одно мягкое напоминание; после него
+// таймер запускается заново (anketa.md: рекомендуемый старт 24 ч).
 
 import { subMinutes } from 'date-fns';
 import { Op } from 'sequelize';
@@ -16,12 +17,36 @@ interface QuestionnaireWithAssociations extends Questionnaire {
   enrollment?: ClientEnrollment;
 }
 
-// Для теста зафиксировано 2 минуты (roadmap 3.14).
-const INACTIVITY_MINUTES = 2;
+/** SA/anketa.md: 24 часа. Для локальной отладки — QUESTIONNAIRE_REMINDER_INACTIVITY_MINUTES. */
+const DEFAULT_INACTIVITY_MINUTES = 24 * 60;
 
-export async function runQuestionnaireReminderJob(logger: Logger): Promise<void> {
+export function resolveQuestionnaireReminderInactivityMinutes(override?: number): number {
+  if (override !== undefined && Number.isInteger(override) && override > 0) {
+    return override;
+  }
+
+  const raw = process.env.QUESTIONNAIRE_REMINDER_INACTIVITY_MINUTES;
+  if (!raw) {
+    return DEFAULT_INACTIVITY_MINUTES;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    return DEFAULT_INACTIVITY_MINUTES;
+  }
+
+  return parsed;
+}
+
+export async function runQuestionnaireReminderJob(
+  logger: Logger,
+  options?: { inactivityMinutes?: number },
+): Promise<void> {
   const now = new Date();
-  const inactivityThreshold = subMinutes(now, INACTIVITY_MINUTES);
+  const inactivityMinutes = resolveQuestionnaireReminderInactivityMinutes(
+    options?.inactivityMinutes,
+  );
+  const inactivityThreshold = subMinutes(now, inactivityMinutes);
 
   const questionnaires = await Questionnaire.findAll({
     include: [
@@ -45,9 +70,12 @@ export async function runQuestionnaireReminderJob(logger: Logger): Promise<void>
     ],
     where: {
       status: 'in_progress',
-      [Op.or]: [{ lastAnswerAt: null }, { lastAnswerAt: { [Op.lt]: inactivityThreshold } }],
-      // Не отправляем повторно, пока не будет нового ответа.
-      lastReminderAt: null,
+      [Op.and]: [
+        { [Op.or]: [{ lastAnswerAt: null }, { lastAnswerAt: { [Op.lt]: inactivityThreshold } }] },
+        {
+          [Op.or]: [{ lastReminderAt: null }, { lastReminderAt: { [Op.lt]: inactivityThreshold } }],
+        },
+      ],
     },
   });
 
@@ -58,6 +86,22 @@ export async function runQuestionnaireReminderJob(logger: Logger): Promise<void>
     const client = questionnaireWithAssoc.client;
     const enrollment = questionnaireWithAssoc.enrollment;
     if (!client?.telegramId || !enrollment) continue;
+
+    const alreadyOnboarded = await ClientEnrollment.findOne({
+      where: {
+        clientId: client.id,
+        id: { [Op.ne]: enrollment.id },
+        status: { [Op.in]: ['active', 'paused'] },
+        onboardingStatus: 'completed',
+      },
+    });
+    if (alreadyOnboarded) {
+      logger.info(
+        { clientId: client.id, questionnaireId: questionnaire.id },
+        'Пропуск напоминания: у клиента уже есть пройденный онбординг',
+      );
+      continue;
+    }
 
     const questionNumber = questionnaire.currentQuestion + 1;
     const text = `Вы остановились на вопросе ${questionNumber}. Давайте продолжим — это займёт совсем немного времени.`;

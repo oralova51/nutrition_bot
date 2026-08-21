@@ -12,6 +12,7 @@ import {
   type EnrollmentLinkAttemptResult,
 } from '@nutrition-bot/shared';
 import type { Logger } from 'pino';
+import type { Transaction } from 'sequelize';
 
 /** Префикс в deep link (`t.me/bot?start=enr_...`); в БД (`enrollment_links.code`) не хранится. */
 export const ENROLLMENT_LINK_PAYLOAD_PREFIX = 'enr_';
@@ -29,6 +30,8 @@ export type ActivationResult =
       client: Client;
       clientId: string;
       onboardingStatus: string;
+      /** Повторный переход по уже активированной этим же telegramId ссылке. */
+      resumed: boolean;
     }
   | { success: false; error: ActivationErrorCode };
 
@@ -52,12 +55,21 @@ async function logAttempt(
   linkId: string | null,
   telegramId: number,
   result: EnrollmentLinkAttemptResult,
+  transaction?: Transaction,
 ): Promise<void> {
-  await EnrollmentLinkAttempt.create({
-    linkId,
-    telegramId: telegramId.toString(),
-    result,
-  });
+  await EnrollmentLinkAttempt.create(
+    {
+      linkId,
+      telegramId: telegramId.toString(),
+      result,
+    },
+    transaction ? { transaction } : {},
+  );
+}
+
+function isSameTelegramUser(link: EnrollmentLink, client: Client, telegramId: number): boolean {
+  const telegramIdStr = telegramId.toString();
+  return link.usedByTelegramId === telegramIdStr || client.telegramId === telegramIdStr;
 }
 
 /**
@@ -81,64 +93,87 @@ export async function activateEnrollmentLink(
     return { success: false, error: 'INVALID_CODE' };
   }
 
-  const link = await EnrollmentLink.findOne({ where: { code } });
-  if (!link) {
+  const unlocked = await EnrollmentLink.findOne({ where: { code } });
+  if (!unlocked) {
     await logAttempt(null, telegramId, 'invalid_code');
     return { success: false, error: 'INVALID_CODE' };
   }
 
-  if (link.status === 'used') {
-    await logAttempt(link.id, telegramId, 'already_used');
-    return { success: false, error: 'ALREADY_USED' };
-  }
+  return getSequelize().transaction(async (transaction) => {
+    const link = await EnrollmentLink.findByPk(unlocked.id, {
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+    if (!link) {
+      await logAttempt(null, telegramId, 'invalid_code', transaction);
+      return { success: false, error: 'INVALID_CODE' };
+    }
 
-  if (link.status === 'revoked') {
-    // Отозванная ссылка внешне не должна отличаться от несуществующей — не раскрываем
-    // клиенту факт отзыва (например, при regenerate — see adminAPI.md §4.4).
-    await logAttempt(link.id, telegramId, 'invalid_code');
-    return { success: false, error: 'INVALID_CODE' };
-  }
+    const enrollment = await ClientEnrollment.findByPk(link.enrollmentId, { transaction });
+    if (!enrollment) {
+      logger.error(
+        { linkId: link.id, enrollmentId: link.enrollmentId },
+        'EnrollmentLink ссылается на несуществующий ClientEnrollment — нарушение целостности данных',
+      );
+      throw new Error(
+        `ClientEnrollment ${link.enrollmentId} не найден для EnrollmentLink ${link.id}`,
+      );
+    }
 
-  if (link.expiresAt.getTime() < Date.now()) {
-    await link.update({ status: 'expired' });
-    await logAttempt(link.id, telegramId, 'expired');
-    return { success: false, error: 'LINK_EXPIRED' };
-  }
+    const client = await Client.findByPk(enrollment.clientId, { transaction });
+    if (!client) {
+      logger.error(
+        { linkId: link.id, clientId: enrollment.clientId },
+        'ClientEnrollment ссылается на несуществующего Client — нарушение целостности данных',
+      );
+      throw new Error(
+        `Client ${enrollment.clientId} не найден для ClientEnrollment ${enrollment.id}`,
+      );
+    }
 
-  const enrollment = await ClientEnrollment.findByPk(link.enrollmentId);
-  if (!enrollment) {
-    logger.error(
-      { linkId: link.id, enrollmentId: link.enrollmentId },
-      'EnrollmentLink ссылается на несуществующий ClientEnrollment — нарушение целостности данных',
-    );
-    throw new Error(
-      `ClientEnrollment ${link.enrollmentId} не найден для EnrollmentLink ${link.id}`,
-    );
-  }
+    if (link.status === 'used') {
+      if (!isSameTelegramUser(link, client, telegramId)) {
+        await logAttempt(link.id, telegramId, 'already_used', transaction);
+        return { success: false, error: 'ALREADY_USED' };
+      }
 
-  if (enrollment.status === 'cancelled') {
-    await logAttempt(link.id, telegramId, 'enrollment_cancelled');
-    return { success: false, error: 'ENROLLMENT_CANCELLED' };
-  }
+      const now = new Date();
+      await client.update({ telegramUsername, lastInteractionAt: now }, { transaction });
+      await logAttempt(link.id, telegramId, 'success', transaction);
+      return {
+        success: true,
+        enrollment,
+        client,
+        clientId: client.id,
+        onboardingStatus: enrollment.onboardingStatus,
+        resumed: true,
+      };
+    }
 
-  const client = await Client.findByPk(enrollment.clientId);
-  if (!client) {
-    logger.error(
-      { linkId: link.id, clientId: enrollment.clientId },
-      'ClientEnrollment ссылается на несуществующего Client — нарушение целостности данных',
-    );
-    throw new Error(
-      `Client ${enrollment.clientId} не найден для ClientEnrollment ${enrollment.id}`,
-    );
-  }
+    if (link.status === 'revoked') {
+      // Отозванная ссылка внешне не должна отличаться от несуществующей — не раскрываем
+      // клиенту факт отзыва (например, при regenerate — see adminAPI.md §4.4).
+      await logAttempt(link.id, telegramId, 'invalid_code', transaction);
+      return { success: false, error: 'INVALID_CODE' };
+    }
 
-  const now = new Date();
+    if (link.expiresAt.getTime() < Date.now()) {
+      await link.update({ status: 'expired' }, { transaction });
+      await logAttempt(link.id, telegramId, 'expired', transaction);
+      return { success: false, error: 'LINK_EXPIRED' };
+    }
 
-  const existingClient = await Client.findOne({
-    where: { telegramId: telegramId.toString() },
-  });
+    if (enrollment.status === 'cancelled') {
+      await logAttempt(link.id, telegramId, 'enrollment_cancelled', transaction);
+      return { success: false, error: 'ENROLLMENT_CANCELLED' };
+    }
 
-  await getSequelize().transaction(async (transaction) => {
+    const now = new Date();
+    const existingClient = await Client.findOne({
+      where: { telegramId: telegramId.toString() },
+      transaction,
+    });
+
     await link.update(
       { status: 'used', usedAt: now, usedByTelegramId: telegramId.toString() },
       { transaction },
@@ -156,28 +191,26 @@ export async function activateEnrollmentLink(
       );
     }
 
-    await EnrollmentLinkAttempt.create(
-      { linkId: link.id, telegramId: telegramId.toString(), result: 'success' },
-      { transaction },
-    );
+    await logAttempt(link.id, telegramId, 'success', transaction);
+
+    const actualClient = existingClient ?? client;
+    const finalClient = await Client.findByPk(actualClient.id, { transaction });
+    if (!finalClient) {
+      throw new Error(`Client ${actualClient.id} не найден после активации ссылки`);
+    }
+
+    const finalEnrollment = await ClientEnrollment.findByPk(enrollment.id, { transaction });
+    if (!finalEnrollment) {
+      throw new Error(`ClientEnrollment ${enrollment.id} не найден после активации ссылки`);
+    }
+
+    return {
+      success: true,
+      enrollment: finalEnrollment,
+      client: finalClient,
+      clientId: finalClient.id,
+      onboardingStatus: finalEnrollment.onboardingStatus,
+      resumed: false,
+    };
   });
-
-  const actualClient = existingClient ?? client;
-  const finalClient = await Client.findByPk(actualClient.id);
-  if (!finalClient) {
-    throw new Error(`Client ${actualClient.id} не найден после активации ссылки`);
-  }
-
-  const finalEnrollment = await ClientEnrollment.findByPk(enrollment.id);
-  if (!finalEnrollment) {
-    throw new Error(`ClientEnrollment ${enrollment.id} не найден после активации ссылки`);
-  }
-
-  return {
-    success: true,
-    enrollment: finalEnrollment,
-    client: finalClient,
-    clientId: finalClient.id,
-    onboardingStatus: finalEnrollment.onboardingStatus,
-  };
 }
