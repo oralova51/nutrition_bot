@@ -39,6 +39,43 @@ export default defineConfig({
         'packages/shared/src/testing/**',
         'packages/*/src/index.ts',
       ],
+      // Порог по набору `npm test` (без integration/eval). Числа — floor текущего
+      // покрытия: регресс ломает `npm run test:coverage`, шум v8 на десятые — нет.
+      // Глобальный порог считает все файлы, даже те, что ниже покрыты glob'ами.
+      thresholds: {
+        statements: 34,
+        branches: 27,
+        functions: 31,
+        lines: 34,
+        // http-server.ts и config.ts — транспорт (0%), не логика job'ов.
+        'packages/scheduler/src/jobs/**/*.ts': {
+          statements: 94,
+          branches: 88,
+          functions: 100,
+          lines: 96,
+        },
+        'packages/shared/src/telegram/sender.ts': {
+          statements: 100,
+          branches: 91,
+          functions: 100,
+          lines: 100,
+        },
+        'packages/ai/src/diary-processor.ts': {
+          statements: 100,
+          branches: 92,
+          functions: 100,
+          lines: 100,
+        },
+        'packages/ai/src/evening-summary.ts': {
+          statements: 100,
+          branches: 92,
+          functions: 100,
+          lines: 100,
+        },
+        'packages/ai/src/history-summary.ts': {
+          100: true,
+        },
+      },
     },
   },
 });
