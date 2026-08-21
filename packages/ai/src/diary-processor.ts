@@ -101,6 +101,8 @@ export async function processDiaryEntry(nutritionDiaryId: string): Promise<Proce
         type: proposal.type,
         priority: proposal.priority,
         content: text,
+        // 'sent' здесь = «выпущена»: других статусов схема не допускает, а факт
+        // доставки хранится в Message.deliveryStatus.
         status: 'sent',
       });
 
@@ -108,8 +110,17 @@ export async function processDiaryEntry(nutritionDiaryId: string): Promise<Proce
 
       // Быстрая обратная связь: отправляем сразу после подтверждения дневника.
       // Вечерний job (roadmap 5.8) пропускает уже отправленные через hasRecommendationMessage.
-      await sendRecommendationMessage(client.telegramId, client.id, recommendation.id, text);
-      messagesSent += 1;
+      // Сбой доставки не прерывает обработку: остальные предложения и вечерняя сводка
+      // не должны зависеть от одного недоступного чата, а недоставленное подберёт job в 20:00.
+      try {
+        await sendRecommendationMessage(client.telegramId, client.id, recommendation.id, text);
+        messagesSent += 1;
+      } catch (err) {
+        logger.warn(
+          { err, clientId: client.id, recommendationId: recommendation.id },
+          'Рекомендация создана, но не доставлена в Telegram',
+        );
+      }
     }
   }
 
@@ -182,14 +193,16 @@ async function loadQuestionnaireForEnrollment(
 }
 
 async function countRecommendationsToday(clientId: string): Promise<number> {
-  // Лимит 2–3/день — по факту доставленных в Telegram, а не по «висящим» строкам в БД.
-  // Иначе сбой отправки блокирует обратную связь до конца суток.
+  // Лимит 2–3/день — по факту доставленных в Telegram: строка Message создаётся
+  // до отправки, и без фильтра по deliveryStatus сбой доставки сжигал бы слот,
+  // блокируя обратную связь до конца суток.
   const { start, end } = getZonedDayRange(new Date(), DEFAULT_TIMEZONE);
 
   return Message.count({
     where: {
       clientId,
       type: 'recommendation',
+      deliveryStatus: 'sent',
       createdAt: { [Op.between]: [start, end] },
     },
   });

@@ -27,6 +27,7 @@ import {
   buildHeuristicEveningSummary,
   composeEveningSummaryText,
 } from './evening-summary-heuristic.js';
+import { buildHistorySummary } from './history-summary.js';
 import { logger } from './logger.js';
 import { RateLimiter } from './rate-limiter.js';
 
@@ -46,7 +47,7 @@ export class OpenAICompatibleAIEngine implements AIEngine {
   }
 
   async analyzeDiary(input: DiaryAnalysisInput): Promise<DiaryAnalysisResult> {
-    const historySummary = this.buildHistorySummary(input);
+    const historySummary = buildHistorySummary(input);
     const previousHistorySummary = this.buildPreviousHistorySummary(input);
     const userPrompt = buildDiaryAnalysisUserPrompt(
       input.entry.description,
@@ -369,24 +370,6 @@ export class OpenAICompatibleAIEngine implements AIEngine {
         finishReason,
       },
     };
-  }
-
-  private buildHistorySummary(input: DiaryAnalysisInput): string {
-    const today = new Date();
-    const dayEntries = input.history.filter((entry) => {
-      const entryDate = new Date(entry.mealAt);
-      return (
-        entryDate.getUTCFullYear() === today.getUTCFullYear() &&
-        entryDate.getUTCMonth() === today.getUTCMonth() &&
-        entryDate.getUTCDate() === today.getUTCDate()
-      );
-    });
-
-    return [
-      `За сегодня записей: ${dayEntries.length}`,
-      `Всего записей за курс: ${input.history.length}`,
-      input.questionnaire ? 'Анкета клиента заполнена.' : 'Анкета не заполнена.',
-    ].join('\n');
   }
 
   private buildPreviousHistorySummary(input: DiaryAnalysisInput): string | undefined {

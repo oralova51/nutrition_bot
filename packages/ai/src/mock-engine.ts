@@ -20,6 +20,7 @@ import type {
   RecommendationType,
 } from './types.js';
 import { buildHeuristicEveningSummary } from './evening-summary-heuristic.js';
+import { buildHistorySummary } from './history-summary.js';
 
 const CRITERIA_CONFIG: Record<
   AnalysisCriterion,
@@ -143,24 +144,6 @@ const DEFICIT_CRITERIA: AnalysisCriterion[] = [
   'protein_deficit',
   'vegetables_fiber_deficit',
 ];
-
-function buildHistorySummary(input: DiaryAnalysisInput): string {
-  const today = new Date();
-  const dayEntries = input.history.filter((entry) => {
-    const entryDate = new Date(entry.mealAt);
-    return (
-      entryDate.getUTCFullYear() === today.getUTCFullYear() &&
-      entryDate.getUTCMonth() === today.getUTCMonth() &&
-      entryDate.getUTCDate() === today.getUTCDate()
-    );
-  });
-
-  return [
-    `За сегодня записей: ${dayEntries.length}`,
-    `Всего записей за курс: ${input.history.length}`,
-    input.questionnaire ? 'Анкета клиента заполнена.' : 'Анкета не заполнена.',
-  ].join('\n');
-}
 
 function hasKeyword(description: string, keywords: string[]): boolean {
   const lower = description.toLowerCase();
