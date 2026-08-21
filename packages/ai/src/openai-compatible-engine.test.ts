@@ -168,6 +168,32 @@ describe('analyzeDiary', () => {
     expect(userPromptOf(0)).toContain('Приблизительная калорийность: 450 ккал.');
   });
 
+  it('передаёт описания за 7 дней и пометку, что запись только что введена', async () => {
+    create.mockResolvedValue(completion('{"proposals":[]}'));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-15T09:00:00.000Z'));
+    const entry = makeDiaryEntry({
+      id: 'diary-now',
+      description: 'Выпила бокал пива',
+      mealAt: new Date('2026-01-15T09:00:00.000Z'),
+    });
+    const earlier = makeDiaryEntry({
+      id: 'diary-kuraga',
+      description: 'Съела 5 ягод кураги',
+      mealAt: new Date('2026-01-14T12:00:00.000Z'),
+    });
+
+    try {
+      await engine().analyzeDiary({ entry, history: [entry, earlier], clientContext });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(userPromptOf(0)).toContain('только что введена');
+    expect(userPromptOf(0)).toContain('Выпила бокал пива [текущая]');
+    expect(userPromptOf(0)).toContain('Съела 5 ягод кураги');
+  });
+
   it('пробрасывает отказ провайдера: вызывающий решает, что делать', async () => {
     create.mockRejectedValue(new Error('429 Too Many Requests'));
 
@@ -199,6 +225,19 @@ describe('generateRecommendationText', () => {
     const text = await engine().generateRecommendationText(proposal, clientContext);
 
     expect(text).toBe('Черновик: добавь стакан воды.');
+  });
+
+  it('для treat_frequency просит модель писать про частоту, не про замену', async () => {
+    create.mockResolvedValue(completion('Пиво ок на выходных.'));
+    const treatProposal: RecommendationProposal = {
+      ...proposal,
+      criterion: 'treat_frequency',
+      draftText: 'Ок раз в неделю.',
+    };
+
+    await engine().generateRecommendationText(treatProposal, clientContext);
+
+    expect(userPromptOf(0)).toContain('Пиши про частоту, не про замену продукта.');
   });
 
   it('откатывается на черновик, если модель вернула пустой ответ', async () => {

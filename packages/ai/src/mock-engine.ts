@@ -23,7 +23,8 @@ import type {
   RecommendationType,
 } from './types.js';
 import { buildHeuristicEveningSummary } from './evening-summary-heuristic.js';
-import { buildHistorySummary } from './history-summary.js';
+import { buildHistorySummary, listEntriesInLocalWindow } from './history-summary.js';
+import { TREAT_PATTERN_MIN_COUNT, countTreatClass, detectTreatClass } from './treat-pattern.js';
 
 const CRITERIA_CONFIG: Record<
   AnalysisCriterion,
@@ -133,6 +134,14 @@ const CRITERIA_CONFIG: Record<
     rationale: 'В записи много простых углеводов.',
     draftText:
       'Простые углеводы дают быструю энергию, но быстро уходят. Попробуй заменить часть на цельнозерновые или добавить белок и овощи.',
+  },
+  treat_frequency: {
+    keywords: [],
+    type: 'habit',
+    priority: 'medium',
+    rationale: 'Тот же класс удовольствий уже встречался за последние 7 дней.',
+    draftText:
+      'Это ок раз в неделю или на выходных — так проще не разгонять лишние калории каждый день. Не нужно заменять бокал водой или протеином, если ты именно этого хотела.',
   },
 };
 
@@ -347,10 +356,7 @@ function tokenize(text: string): string[] {
 function hasProductToken(description: string): boolean {
   const tokens = tokenize(description);
   return tokens.some(
-    (token) =>
-      !COMMON_WORDS.has(token) &&
-      !QUANTITY_MARKERS.has(token) &&
-      !/^\d+$/.test(token),
+    (token) => !COMMON_WORDS.has(token) && !QUANTITY_MARKERS.has(token) && !/^\d+$/.test(token),
   );
 }
 
@@ -386,11 +392,65 @@ function checkClarityHeuristic(description: string): ClarityCheckResult {
   return { needsClarification: true, missingFields, question };
 }
 
+function analyzeTreatPattern(
+  input: DiaryAnalysisInput,
+  historySummary: string,
+): DiaryAnalysisResult | null {
+  const treatClass = detectTreatClass(input.entry.description);
+  if (!treatClass) {
+    return null;
+  }
+
+  const history = input.history.some((item) => item.id === input.entry.id)
+    ? input.history
+    : [input.entry, ...input.history];
+  const windowEntries = listEntriesInLocalWindow(history, input.clientContext.timezone);
+  const count = countTreatClass(windowEntries, treatClass);
+  const config = CRITERIA_CONFIG.treat_frequency;
+
+  if (count < TREAT_PATTERN_MIN_COUNT) {
+    return {
+      proposals: [],
+      metadata: {
+        engine: 'mock',
+        criteria: [],
+        historySummary,
+        skipReason: 'isolated_treat',
+        treatClass,
+      },
+    };
+  }
+
+  return {
+    proposals: [
+      {
+        id: randomUUID(),
+        criterion: 'treat_frequency',
+        type: config.type,
+        priority: config.priority,
+        rationale: `${config.rationale} (контекст: ${historySummary.replace(/\n/g, '; ')})`,
+        draftText: config.draftText,
+      },
+    ],
+    metadata: {
+      engine: 'mock',
+      criteria: ['treat_frequency'],
+      historySummary,
+      treatClass,
+    },
+  };
+}
+
 export class MockAIEngine implements AIEngine {
   analyzeDiary(input: DiaryAnalysisInput): Promise<DiaryAnalysisResult> {
+    const historySummary = buildHistorySummary(input);
+    const treatResult = analyzeTreatPattern(input, historySummary);
+    if (treatResult) {
+      return Promise.resolve(treatResult);
+    }
+
     const detected = detectCriteria(input.entry.description);
     const criteria = resolveCriteria(detected, input.entry);
-    const historySummary = buildHistorySummary(input);
 
     const proposals: RecommendationProposal[] = pickTopCriteria(criteria).map((criterion) => {
       const config = CRITERIA_CONFIG[criterion];

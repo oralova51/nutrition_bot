@@ -11,7 +11,8 @@ export type AnalysisCriterion =
   | 'protein_deficit'
   | 'snacking_overeating'
   | 'vegetables_fiber_deficit'
-  | 'simple_carbs_excess';
+  | 'simple_carbs_excess'
+  | 'treat_frequency';
 
 export type RecommendationType = 'product' | 'habit' | 'regimen' | 'calories';
 
