@@ -32,6 +32,11 @@ for (const [key, value] of Object.entries(testEnv)) {
 
 process.env.NODE_ENV = 'test';
 
+// Системный пояс процесса фиксируем: scheduler-job'ы сравнивают локальное HH:mm
+// клиента через toZonedTime, а это конструирование даты в поясе процесса.
+// Без фиксации результат зависит от машины разработчика (и от DST-переходов в её поясе).
+process.env.TZ = 'UTC';
+
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 
 if (testDatabaseUrl && testDatabaseUrl === rootEnv.DATABASE_URL) {

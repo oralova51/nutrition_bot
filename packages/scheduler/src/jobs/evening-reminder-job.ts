@@ -3,7 +3,6 @@
 // записей NutritionDiary за день. Если записей < 3 — отправляет мягкое напоминание.
 // force=true — для ручного теста: игнорирует время, лимит дневника и дедуп за день.
 
-import { fromZonedTime, format, toZonedTime } from 'date-fns-tz';
 import { Op } from 'sequelize';
 import {
   Client,
@@ -12,10 +11,14 @@ import {
   Message,
   NotificationSettings,
   NutritionDiary,
+  formatZonedTime,
+  getZonedDayRange,
   sendTelegramMessageWithRetry,
 } from '@nutrition-bot/shared';
 import type { Logger } from 'pino';
 import type { SchedulerJobOptions, SchedulerJobResult } from './types.js';
+
+const REMINDER_TIME = '20:00';
 
 const EVENING_REMINDER_TEXT =
   'Мне кажется, я не услышал о твоём ужине. Если ты что-нибудь ел, поделись со мной?';
@@ -75,6 +78,8 @@ export async function runEveningReminderJob(
     errors: 0,
   };
 
+  const now = new Date();
+
   for (const client of clients) {
     const clientWithAssoc = client as ClientWithAssociations;
     const settings = clientWithAssoc.notificationSettings;
@@ -85,14 +90,12 @@ export async function runEveningReminderJob(
     }
 
     const timezone = DEFAULT_TIMEZONE;
-    const zonedNow = toZonedTime(new Date(), timezone);
-    const currentTime = format(zonedNow, 'HH:mm', { timeZone: timezone });
-    if (!force && currentTime !== '20:00') {
+    if (!force && formatZonedTime(now, timezone) !== REMINDER_TIME) {
       result.skipped += 1;
       continue;
     }
 
-    const { start, end } = getZonedDayRange(new Date(), timezone);
+    const { start, end } = getZonedDayRange(now, timezone);
     if (!force) {
       const diaryCount = await NutritionDiary.count({
         where: {
@@ -141,15 +144,4 @@ async function hasEveningReminderToday(clientId: string, start: Date, end: Date)
     },
   });
   return count > 0;
-}
-
-function getZonedDayRange(date: Date, timezone: string): { start: Date; end: Date } {
-  const zonedNow = toZonedTime(date, timezone);
-  const dateString = format(zonedNow, 'yyyy-MM-dd', { timeZone: timezone });
-  const startLocal = new Date(`${dateString}T00:00:00`);
-  const endLocal = new Date(`${dateString}T23:59:59.999`);
-  return {
-    start: fromZonedTime(startLocal, timezone),
-    end: fromZonedTime(endLocal, timezone),
-  };
 }

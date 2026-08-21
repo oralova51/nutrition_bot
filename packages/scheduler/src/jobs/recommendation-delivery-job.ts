@@ -1,7 +1,6 @@
 // Отложенная отправка рекомендаций medium/low в 20:00 по Europe/Kaliningrad.
 // Roadmap 5.8: medium/low рекомендации создаются сразу, но отправляются вечером.
 
-import { format, toZonedTime } from 'date-fns-tz';
 import { Op } from 'sequelize';
 import {
   Client,
@@ -9,6 +8,7 @@ import {
   Message,
   NotificationSettings,
   Recommendation,
+  formatZonedTime,
   sendTelegramMessageWithRetry,
 } from '@nutrition-bot/shared';
 import type { Logger } from 'pino';
@@ -17,8 +17,17 @@ interface RecommendationWithClient extends Recommendation {
   client?: Client | null;
 }
 
+const DELIVERY_TIME = '20:00';
+
 export async function runRecommendationDeliveryJob(logger: Logger): Promise<void> {
   const now = new Date();
+
+  // Слот один для всех клиентов (MVP: фиксированный пояс студии), поэтому проверяем
+  // его до выборки: иначе job на каждом запуске впустую читает рекомендации и настройки.
+  if (formatZonedTime(now, DEFAULT_TIMEZONE) !== DELIVERY_TIME) {
+    return;
+  }
+
   const recommendations = await Recommendation.findAll({
     where: {
       priority: { [Op.in]: ['medium', 'low'] },
@@ -44,13 +53,6 @@ export async function runRecommendationDeliveryJob(logger: Logger): Promise<void
 
     const settings = await NotificationSettings.findOne({ where: { clientId: client.id } });
     if (!settings || !settings.enabled || !settings.enabledTypes.includes('recommendations')) {
-      continue;
-    }
-
-    const timezone = DEFAULT_TIMEZONE;
-    const zonedNow = toZonedTime(now, timezone);
-    const currentTime = format(zonedNow, 'HH:mm', { timeZone: timezone });
-    if (currentTime !== '20:00') {
       continue;
     }
 

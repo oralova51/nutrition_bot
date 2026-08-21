@@ -12,7 +12,20 @@ interface AlertConfig {
   minIntervalMinutes: number;
 }
 
-let lastAlertSentAt: Date | null = null;
+/**
+ * Дедупликация алертов держится в памяти процесса (маркера в БД нет), поэтому
+ * состояние передаётся явно: иначе оно утекает между вызовами и его нельзя
+ * изолировать в тестах. Продакшн-вызов из cron использует общее состояние по умолчанию.
+ */
+export interface DeliveryFailureAlertState {
+  lastAlertSentAt: Date | null;
+}
+
+export function createDeliveryFailureAlertState(): DeliveryFailureAlertState {
+  return { lastAlertSentAt: null };
+}
+
+const sharedAlertState = createDeliveryFailureAlertState();
 
 function resolveConfig(): AlertConfig {
   const windowMinutes = parseIntPositive(process.env.MASS_FAILURE_WINDOW_MINUTES, 30);
@@ -28,7 +41,10 @@ function parseIntPositive(value: string | undefined, defaultValue: number): numb
   return parsed;
 }
 
-export async function runDeliveryFailureAlertJob(logger: Logger): Promise<void> {
+export async function runDeliveryFailureAlertJob(
+  logger: Logger,
+  state: DeliveryFailureAlertState = sharedAlertState,
+): Promise<void> {
   const config = resolveConfig();
   const windowStart = new Date(Date.now() - config.windowMinutes * 60 * 1000);
 
@@ -49,9 +65,9 @@ export async function runDeliveryFailureAlertJob(logger: Logger): Promise<void> 
   }
 
   const minIntervalMs = config.minIntervalMinutes * 60 * 1000;
-  if (lastAlertSentAt && Date.now() - lastAlertSentAt.getTime() < minIntervalMs) {
+  if (state.lastAlertSentAt && Date.now() - state.lastAlertSentAt.getTime() < minIntervalMs) {
     logger.info(
-      { lastAlertSentAt, minIntervalMinutes: config.minIntervalMinutes },
+      { lastAlertSentAt: state.lastAlertSentAt, minIntervalMinutes: config.minIntervalMinutes },
       'Алерт о массовом сбое уже отправлен недавно, пропускаем',
     );
     return;
@@ -65,7 +81,7 @@ export async function runDeliveryFailureAlertJob(logger: Logger): Promise<void> 
 
   try {
     await sendAdminAlert(message);
-    lastAlertSentAt = new Date();
+    state.lastAlertSentAt = new Date();
     logger.warn(
       { failedCount, windowMinutes: config.windowMinutes },
       'Администратору отправлен алерт о массовом сбое доставки',

@@ -4,4 +4,5 @@
 
 export * from './database.js';
 export * from './factories.js';
+export * from './logger.js';
 export * from './mock-model.js';

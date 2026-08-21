@@ -4,13 +4,15 @@
 // force=true — для ручного теста: игнорирует время и частоту.
 
 import { differenceInCalendarDays, parseISO } from 'date-fns';
-import { format, toZonedTime } from 'date-fns-tz';
+import { formatInTimeZone } from 'date-fns-tz';
 import { Op } from 'sequelize';
 import {
   Client,
   ClientEnrollment,
   DEFAULT_TIMEZONE,
   NotificationSettings,
+  formatZonedDate,
+  formatZonedTime,
   sendTelegramMessageWithRetry,
   type NotificationFrequency,
 } from '@nutrition-bot/shared';
@@ -75,6 +77,8 @@ export async function runDailyReminderJob(
     errors: 0,
   };
 
+  const now = new Date();
+
   for (const client of clients) {
     const clientWithAssoc = client as ClientWithAssociations;
     const settings = clientWithAssoc.notificationSettings;
@@ -85,8 +89,7 @@ export async function runDailyReminderJob(
     }
 
     const timezone = DEFAULT_TIMEZONE;
-    const zonedNow = toZonedTime(new Date(), timezone);
-    const currentTime = format(zonedNow, 'HH:mm', { timeZone: timezone });
+    const currentTime = formatZonedTime(now, timezone);
 
     if (!force) {
       if (currentTime !== settings.reminderTime) {
@@ -94,7 +97,7 @@ export async function runDailyReminderJob(
         continue;
       }
 
-      if (!shouldSendToday(settings.frequency, zonedNow, timezone, enrollment)) {
+      if (!shouldSendToday(settings.frequency, now, timezone, enrollment)) {
         result.skipped += 1;
         continue;
       }
@@ -124,7 +127,7 @@ export async function runDailyReminderJob(
 
 function shouldSendToday(
   frequency: NotificationFrequency,
-  zonedNow: Date,
+  now: Date,
   timezone: string,
   enrollment: ClientEnrollment,
 ): boolean {
@@ -132,9 +135,9 @@ function shouldSendToday(
     case 'daily':
       return true;
     case 'every_other_day':
-      return isEveryOtherDay(zonedNow, timezone, enrollment);
+      return isEveryOtherDay(now, timezone, enrollment);
     case 'three_per_week':
-      return isThreePerWeekDay(zonedNow, timezone);
+      return isThreePerWeekDay(now, timezone);
     case 'custom_days':
       // Post-MVP: требует отдельного поля custom_days в NotificationSettings.
       return false;
@@ -143,26 +146,21 @@ function shouldSendToday(
   }
 }
 
-function isEveryOtherDay(zonedNow: Date, timezone: string, enrollment: ClientEnrollment): boolean {
+function isEveryOtherDay(now: Date, timezone: string, enrollment: ClientEnrollment): boolean {
   const startDate = enrollment.startDate;
   if (!startDate) return false;
 
-  const start = parseISO(startDate);
-  const zonedStart = toZonedTime(start, timezone);
+  // Обе даты приводим к календарному дню (yyyy-MM-dd) и только потом считаем разницу:
+  // паритет должен зависеть от пояса клиента, а не от пояса процесса.
   const daysDiff = differenceInCalendarDays(
-    startOfZonedDay(zonedNow, timezone),
-    startOfZonedDay(zonedStart, timezone),
+    parseISO(formatZonedDate(now, timezone)),
+    parseISO(startDate),
   );
-  return daysDiff % 2 === 0;
+  return daysDiff >= 0 && daysDiff % 2 === 0;
 }
 
-function isThreePerWeekDay(zonedNow: Date, timezone: string): boolean {
+function isThreePerWeekDay(now: Date, timezone: string): boolean {
   // MVP: фиксированные дни — понедельник, среда, пятница (ISO 1, 3, 5).
-  const isoDayOfWeek = Number(format(zonedNow, 'i', { timeZone: timezone }));
+  const isoDayOfWeek = Number(formatInTimeZone(now, timezone, 'i'));
   return [1, 3, 5].includes(isoDayOfWeek);
-}
-
-function startOfZonedDay(date: Date, timezone: string): Date {
-  const dateString = format(date, 'yyyy-MM-dd', { timeZone: timezone });
-  return parseISO(`${dateString}T00:00:00`);
 }
