@@ -13,8 +13,10 @@ export default defineConfig({
     environment: 'node',
     include: ['packages/**/*.integration.test.ts'],
     setupFiles: ['./test/setup.ts'],
-    testTimeout: 30_000,
-    hookTimeout: 60_000,
+    // Каждый шаг сценария — несколько запросов к удалённой БД, поэтому лимиты
+    // заметно выше юнит-тестовых.
+    testTimeout: 60_000,
+    hookTimeout: 120_000,
     // Наборы делят одну базу и чистят её целиком — параллельный прогон файлов
     // приводил бы к тому, что один тест стирает данные другого.
     fileParallelism: false,

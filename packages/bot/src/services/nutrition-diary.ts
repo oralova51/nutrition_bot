@@ -109,7 +109,9 @@ function parseDiaryEntry(text: string, timezone: string): ParsedDiaryEntry {
   let cleaned = text.trim();
   let approxCalories: number | null = null;
 
-  const caloriesMatch = cleaned.match(/(\d+)\s*(?:ккал|калорий|кал)\b/i);
+  // `\b` в JS считает словом только ASCII, поэтому граница после кириллицы никогда
+  // не срабатывает — вместо неё отрицательный просмотр вперёд по русским буквам.
+  const caloriesMatch = cleaned.match(/(\d+)\s*(?:ккал|калори[йи]|кал)(?![а-яё])/i);
   if (caloriesMatch?.[1]) {
     approxCalories = Number.parseInt(caloriesMatch[1], 10);
     cleaned = cleaned.replace(caloriesMatch[0], '').trim();
@@ -122,7 +124,9 @@ function parseDiaryEntry(text: string, timezone: string): ParsedDiaryEntry {
 }
 
 function parseMealTime(text: string, timezone: string): Date | null {
-  const explicitTimeMatch = text.match(/\bв\s+(\d{1,2})[:.](\d{2})?\b/);
+  // Предлог «в» — кириллица, поэтому `\b` перед ним не совпадал ни в одном тексте:
+  // время указывалось явно, а запись всё равно получала текущий момент.
+  const explicitTimeMatch = text.match(/(?:^|\s)в\s+(\d{1,2})[:.](\d{2})?(?!\d)/);
   if (explicitTimeMatch?.[1]) {
     const hours = Number.parseInt(explicitTimeMatch[1], 10);
     const minutes = explicitTimeMatch[2] ? Number.parseInt(explicitTimeMatch[2], 10) : 0;
