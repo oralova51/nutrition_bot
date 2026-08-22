@@ -106,6 +106,10 @@ export async function runQuestionnaireReminderJob(
     const questionNumber = questionnaire.currentQuestion + 1;
     const text = `Вы остановились на вопросе ${questionNumber}. Давайте продолжим — это займёт совсем немного времени.`;
 
+    // Фиксируем попытку сразу: иначе при сбое (chat not found) cron каждые 2 мин
+    // снова выбирает ту же анкету и спамит администратора алертами.
+    await questionnaire.update({ lastReminderAt: now });
+
     try {
       await sendTelegramMessageWithRetry({
         telegramId: client.telegramId,
@@ -114,7 +118,6 @@ export async function runQuestionnaireReminderJob(
         type: 'questionnaire_reminder',
         category: 'optional',
       });
-      await questionnaire.update({ lastReminderAt: now });
       logger.info(
         { clientId: client.id, questionnaireId: questionnaire.id, questionNumber },
         'Напоминание о брошенной анкете отправлено',

@@ -1,6 +1,7 @@
 // Единый сервис отправки сообщений в Telegram.
 // Используется и ботом, и scheduler. Пишет факт доставки в Message.
 // Retry-политика: +5 мин, максимум 3 попытки (ФТ-4 / ФТ-5, roadmap 4.7).
+// Постоянные ошибки Telegram (400 chat not found, 403 blocked) не ретраятся.
 
 import { logMessageDeliveryFailure } from '../logging/events.js';
 import { createLogger } from '../logging/logger.js';
@@ -13,6 +14,19 @@ const logger = createLogger('telegram-sender');
 
 const RETRY_DELAY_MS = 5 * 60 * 1000;
 const MAX_RETRIES = 3;
+/** 400/401/403/404 Telegram не «чинятся» повтором той же sendMessage. */
+const PERMANENT_TELEGRAM_ERROR_CODES = new Set([400, 401, 403, 404]);
+const PERMANENT_ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const lastPermanentAlertAt = new Map<string, number>();
+
+const PERMANENT_ERROR_TEXT_MARKERS = [
+  'chat not found',
+  'bot was blocked',
+  'user is deactivated',
+  'bot was kicked',
+  'peer_id_invalid',
+  'forbidden: bot was blocked by the user',
+];
 
 export type TelegramParseMode = 'HTML' | 'Markdown' | 'MarkdownV2';
 
@@ -61,6 +75,7 @@ function alertAdminOnDeliveryFailure(
   payload: TelegramMessagePayload,
   retryCount: number,
   err: unknown,
+  permanent: boolean,
 ): void {
   logMessageDeliveryFailure(logger, {
     clientId: payload.clientId,
@@ -70,12 +85,17 @@ function alertAdminOnDeliveryFailure(
     err,
   });
 
+  const permanentHint = permanent
+    ? 'Постоянная ошибка Telegram — повторных попыток не будет.\n'
+    : '';
+
   void sendAdminAlert(
     `❌ Сообщение не доставлено\n\n` +
       `Client: ${payload.clientId}\n` +
       `Message: ${message.id}\n` +
       `Type: ${payload.type}\n` +
       `Retry: ${retryCount}/${MAX_RETRIES}\n` +
+      permanentHint +
       `Ошибка: ${formatError(err)}`,
   ).catch((alertErr: unknown) => {
     logger.warn(
@@ -90,6 +110,46 @@ function formatError(err: unknown): string {
     return `${err.name}: ${err.message}`;
   }
   return String(err);
+}
+
+function getTelegramErrorCode(err: unknown): number | undefined {
+  if (typeof err !== 'object' || err === null || !('error_code' in err)) {
+    return undefined;
+  }
+  const code = err.error_code;
+  if (typeof code !== 'number' || !Number.isInteger(code)) {
+    return undefined;
+  }
+  return code;
+}
+
+/**
+ * Ошибки, которые не имеет смысла ретраить: чат не найден, бот заблокирован,
+ * пользователь деактивирован. Сетевые сбои и 429/5xx — нет.
+ */
+export function isPermanentTelegramError(err: unknown): boolean {
+  const code = getTelegramErrorCode(err);
+  if (code !== undefined && PERMANENT_TELEGRAM_ERROR_CODES.has(code)) {
+    return true;
+  }
+
+  const text = formatError(err).toLowerCase();
+  return PERMANENT_ERROR_TEXT_MARKERS.some((marker) => text.includes(marker));
+}
+
+function shouldAlertAdminOnPermanentError(clientId: string): boolean {
+  const now = Date.now();
+  const last = lastPermanentAlertAt.get(clientId);
+  if (last !== undefined && now - last < PERMANENT_ALERT_COOLDOWN_MS) {
+    return false;
+  }
+  lastPermanentAlertAt.set(clientId, now);
+  return true;
+}
+
+/** Сброс in-memory cooldown алертов — только для unit-тестов. */
+export function resetPermanentDeliveryAlertCooldown(): void {
+  lastPermanentAlertAt.clear();
 }
 
 /** Базовая отправка без retry. Используется в боте для ответов в реальном времени. */
@@ -140,7 +200,8 @@ async function sendWithRetry(
     });
     return { telegramMessageId: telegramMessage.message_id, message };
   } catch (err) {
-    const nextRetryCount = retryCount + 1;
+    const permanent = isPermanentTelegramError(err);
+    const nextRetryCount = permanent ? MAX_RETRIES : retryCount + 1;
     await message.update({ retryCount: nextRetryCount });
     logMessageDeliveryFailure(logger, {
       clientId: payload.clientId,
@@ -150,9 +211,12 @@ async function sendWithRetry(
       err,
     });
 
-    if (nextRetryCount >= MAX_RETRIES) {
+    if (permanent || nextRetryCount >= MAX_RETRIES) {
       await message.update({ deliveryStatus: 'delivery_failed' });
-      alertAdminOnDeliveryFailure(message, payload, nextRetryCount, err);
+      const alertAdmin = !permanent || shouldAlertAdminOnPermanentError(payload.clientId);
+      if (alertAdmin) {
+        alertAdminOnDeliveryFailure(message, payload, nextRetryCount, err, permanent);
+      }
       throw err;
     }
 

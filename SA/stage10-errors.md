@@ -19,6 +19,7 @@
 - Реализован в `packages/shared/src/telegram/sender.ts`.
 - `sendTelegramMessage` — синхронная отправка без retry, используется ботом для real-time ответов.
 - `sendTelegramMessageWithRetry` — отправка для scheduler/background: до 3 попыток, пауза 5 мин.
+- Постоянные ошибки Telegram (`400 chat not found`, `403 forbidden` и аналогичные) **не ретраятся**: сразу `delivery_failed` и один алерт. Повторный алерт по тому же клиенту — не чаще раза в 24 ч.
 - При каждой неудаче поле `Message.retryCount` увеличивается, `deliveryStatus` временно `delivery_failed`.
 - После исчерпания попыток `Message.deliveryStatus` окончательно `delivery_failed`, ошибка логируется и администратор получает алерт.
 - Важно: повторные попытки обновляют одну и ту же запись `Message`, а не создают новые.

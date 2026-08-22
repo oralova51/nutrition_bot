@@ -47,10 +47,21 @@ async function main(): Promise<void> {
   });
 
   // Напоминание о брошенной анкете (roadmap 3.14, ФТ-2): порог по умолчанию 24 ч.
+  // Не запускаем второй прогон, пока первый не закончил retry (до 10 мин).
+  let questionnaireReminderRunning = false;
   schedule('*/2 * * * *', () => {
-    void runQuestionnaireReminderJob(logger).catch((err: unknown) => {
-      logger.error({ err }, 'Напоминание об анкете: необработанная ошибка job');
-    });
+    if (questionnaireReminderRunning) {
+      logger.warn('Напоминание об анкете: пропуск, предыдущий прогон ещё выполняется');
+      return;
+    }
+    questionnaireReminderRunning = true;
+    void runQuestionnaireReminderJob(logger)
+      .catch((err: unknown) => {
+        logger.error({ err }, 'Напоминание об анкете: необработанная ошибка job');
+      })
+      .finally(() => {
+        questionnaireReminderRunning = false;
+      });
   });
 
   // Создание pending-записей дневника за день без данных (roadmap 4.14).

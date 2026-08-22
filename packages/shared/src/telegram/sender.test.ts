@@ -15,6 +15,8 @@ import { makeMessage } from '../testing/factories.js';
 import { sendAdminAlert } from './alerts.js';
 import { getBot } from './bot.js';
 import {
+  isPermanentTelegramError,
+  resetPermanentDeliveryAlertCooldown,
   sendTelegramMessage,
   sendTelegramMessageWithRetry,
   type TelegramMessagePayload,
@@ -33,9 +35,24 @@ const payload: TelegramMessagePayload = {
 let sendMessage: ReturnType<typeof vi.fn>;
 let record: ReturnType<typeof makeMessage>;
 
+function telegramApiError(
+  errorCode: number,
+  description: string,
+): Error & { error_code: number; description: string } {
+  const err = new Error(`Call to 'sendMessage' failed! (${errorCode}: ${description})`) as Error & {
+    error_code: number;
+    description: string;
+  };
+  err.name = 'GrammyError';
+  err.error_code = errorCode;
+  err.description = description;
+  return err;
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
   vi.useFakeTimers();
+  resetPermanentDeliveryAlertCooldown();
 
   record = makeMessage({ deliveryStatus: 'sent', retryCount: 0 });
   sendMessage = vi.fn().mockResolvedValue({ message_id: 555 });
@@ -176,5 +193,59 @@ describe('sendTelegramMessageWithRetry', () => {
     await rejects;
 
     expect(record.deliveryStatus).toBe('delivery_failed');
+  });
+
+  it('не ретраит постоянную ошибку chat not found и алертит сразу', async () => {
+    sendMessage.mockRejectedValue(telegramApiError(400, 'Bad Request: chat not found'));
+
+    await expect(sendTelegramMessageWithRetry(payload)).rejects.toThrow('chat not found');
+
+    expect(sendMessage).toHaveBeenCalledOnce();
+    expect(record.retryCount).toBe(3);
+    expect(record.deliveryStatus).toBe('delivery_failed');
+    expect(sendAdminAlert).toHaveBeenCalledOnce();
+    expect(vi.mocked(sendAdminAlert).mock.calls[0]?.[0]).toContain(
+      'Постоянная ошибка Telegram — повторных попыток не будет.',
+    );
+  });
+
+  it('не спамит администратора повторным chat not found по тому же клиенту', async () => {
+    sendMessage.mockRejectedValue(telegramApiError(400, 'Bad Request: chat not found'));
+
+    await expect(sendTelegramMessageWithRetry(payload)).rejects.toThrow('chat not found');
+    record = makeMessage({ deliveryStatus: 'sent', retryCount: 0 });
+    vi.mocked(Message.create).mockResolvedValue(record);
+    await expect(sendTelegramMessageWithRetry(payload)).rejects.toThrow('chat not found');
+
+    expect(sendAdminAlert).toHaveBeenCalledOnce();
+  });
+
+  it('ретраит 429 Too Many Requests как временный сбой', async () => {
+    sendMessage.mockRejectedValue(telegramApiError(429, 'Too Many Requests: retry after 60'));
+
+    const promise = sendTelegramMessageWithRetry(payload);
+    const rejects = expect(promise).rejects.toThrow('Too Many Requests');
+
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
+    await rejects;
+
+    expect(sendMessage).toHaveBeenCalledTimes(3);
+    expect(sendAdminAlert).toHaveBeenCalledOnce();
+    expect(vi.mocked(sendAdminAlert).mock.calls[0]?.[0]).not.toContain('Постоянная ошибка');
+  });
+});
+
+describe('isPermanentTelegramError', () => {
+  it('узнаёт chat not found по тексту, даже без error_code', () => {
+    expect(
+      isPermanentTelegramError(
+        new Error("Call to 'sendMessage' failed! (400: Bad Request: chat not found)"),
+      ),
+    ).toBe(true);
+  });
+
+  it('не считает сетевой сбой постоянным', () => {
+    expect(isPermanentTelegramError(new Error('Telegram недоступен'))).toBe(false);
   });
 });

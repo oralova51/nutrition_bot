@@ -17,7 +17,11 @@ vi.mock('@nutrition-bot/shared', async (importOriginal) => {
   };
 });
 
-import { ClientEnrollment, Questionnaire, sendTelegramMessageWithRetry } from '@nutrition-bot/shared';
+import {
+  ClientEnrollment,
+  Questionnaire,
+  sendTelegramMessageWithRetry,
+} from '@nutrition-bot/shared';
 import {
   makeClient,
   makeEnrollment,
@@ -111,15 +115,15 @@ describe('runQuestionnaireReminderJob', () => {
     expect(questionnaire.lastReminderAt).toEqual(NOW);
   });
 
-  it('не помечает анкету напомненной, если отправка не удалась', async () => {
+  it('фиксирует lastReminderAt даже если отправка не удалась, чтобы не долбить тот же чат', async () => {
     const questionnaire = arrangeQuestionnaire();
     vi.mocked(Questionnaire.findAll).mockResolvedValue([questionnaire] as never);
-    vi.mocked(sendTelegramMessageWithRetry).mockRejectedValue(new Error('Telegram недоступен'));
+    vi.mocked(sendTelegramMessageWithRetry).mockRejectedValue(new Error('chat not found'));
 
     const logger = makeTestLogger();
     await runQuestionnaireReminderJob(logger);
 
-    expect(questionnaire.update).not.toHaveBeenCalled();
+    expect(questionnaire.update).toHaveBeenCalledWith({ lastReminderAt: NOW });
     expect(logger.error).toHaveBeenCalledOnce();
   });
 
