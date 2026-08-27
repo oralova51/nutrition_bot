@@ -13,12 +13,17 @@ vi.mock('@nutrition-bot/shared', async (importOriginal) => {
       ...actual.ClientEnrollment,
       findOne: vi.fn().mockResolvedValue(null),
     },
+    Message: {
+      ...actual.Message,
+      findOne: vi.fn().mockResolvedValue(null),
+    },
     sendTelegramMessageWithRetry: vi.fn(),
   };
 });
 
 import {
   ClientEnrollment,
+  Message,
   Questionnaire,
   sendTelegramMessageWithRetry,
 } from '@nutrition-bot/shared';
@@ -45,6 +50,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
   vi.mocked(sendTelegramMessageWithRetry).mockResolvedValue({ telegramMessageId: 1 } as never);
+  vi.mocked(Message.findOne).mockResolvedValue(null);
   vi.mocked(ClientEnrollment.findOne).mockResolvedValue(null);
 });
 
@@ -125,6 +131,17 @@ describe('runQuestionnaireReminderJob', () => {
 
     expect(questionnaire.update).toHaveBeenCalledWith({ lastReminderAt: NOW });
     expect(logger.error).toHaveBeenCalledOnce();
+  });
+
+  it('не пишет клиенту и не двигает lastReminderAt, если недавно была недоставка', async () => {
+    const questionnaire = arrangeQuestionnaire();
+    vi.mocked(Questionnaire.findAll).mockResolvedValue([questionnaire] as never);
+    vi.mocked(Message.findOne).mockResolvedValue({ id: 'failed-1' } as never);
+
+    await runQuestionnaireReminderJob(makeTestLogger());
+
+    expect(sendTelegramMessageWithRetry).not.toHaveBeenCalled();
+    expect(questionnaire.update).not.toHaveBeenCalled();
   });
 
   it('пропускает анкету без клиента с telegramId', async () => {

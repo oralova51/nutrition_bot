@@ -3,6 +3,7 @@
 // Retry-политика: +5 мин, максимум 3 попытки (ФТ-4 / ФТ-5, roadmap 4.7).
 // Постоянные ошибки Telegram (400 chat not found, 403 blocked) не ретраятся.
 
+import { Op } from 'sequelize';
 import { logMessageDeliveryFailure } from '../logging/events.js';
 import { createLogger } from '../logging/logger.js';
 import { LOG_EVENTS } from '../logging/types.js';
@@ -16,8 +17,8 @@ const RETRY_DELAY_MS = 5 * 60 * 1000;
 const MAX_RETRIES = 3;
 /** 400/401/403/404 Telegram не «чинятся» повтором той же sendMessage. */
 const PERMANENT_TELEGRAM_ERROR_CODES = new Set([400, 401, 403, 404]);
-const PERMANENT_ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-const lastPermanentAlertAt = new Map<string, number>();
+const DELIVERY_FAILURE_ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const lastDeliveryFailureAlertAt = new Map<string, number>();
 
 const PERMANENT_ERROR_TEXT_MARKERS = [
   'chat not found',
@@ -137,19 +138,51 @@ export function isPermanentTelegramError(err: unknown): boolean {
   return PERMANENT_ERROR_TEXT_MARKERS.some((marker) => text.includes(marker));
 }
 
-function shouldAlertAdminOnPermanentError(clientId: string): boolean {
+/**
+ * Клиент уже исчерпал retry за окно кулдауна (chat not found / blocked и т.п.).
+ * Нужно, чтобы job'ы не долбили тот же чат каждые 2 минуты, а дедуп алерта
+ * переживал рестарт процесса (`tsx watch` обнуляет in-memory Map).
+ */
+export async function clientHasRecentDeliveryFailure(
+  clientId: string,
+  excludeMessageId?: string,
+): Promise<boolean> {
+  const since = new Date(Date.now() - DELIVERY_FAILURE_ALERT_COOLDOWN_MS);
+  const previous = await Message.findOne({
+    where: {
+      clientId,
+      deliveryStatus: 'delivery_failed',
+      retryCount: MAX_RETRIES,
+      createdAt: { [Op.gte]: since },
+      ...(excludeMessageId ? { id: { [Op.ne]: excludeMessageId } } : {}),
+    },
+    attributes: ['id'],
+  });
+  return previous !== null;
+}
+
+async function shouldAlertAdminOnDeliveryFailure(
+  clientId: string,
+  messageId: string,
+): Promise<boolean> {
   const now = Date.now();
-  const last = lastPermanentAlertAt.get(clientId);
-  if (last !== undefined && now - last < PERMANENT_ALERT_COOLDOWN_MS) {
+  const last = lastDeliveryFailureAlertAt.get(clientId);
+  if (last !== undefined && now - last < DELIVERY_FAILURE_ALERT_COOLDOWN_MS) {
     return false;
   }
-  lastPermanentAlertAt.set(clientId, now);
+
+  if (await clientHasRecentDeliveryFailure(clientId, messageId)) {
+    lastDeliveryFailureAlertAt.set(clientId, now);
+    return false;
+  }
+
+  lastDeliveryFailureAlertAt.set(clientId, now);
   return true;
 }
 
 /** Сброс in-memory cooldown алертов — только для unit-тестов. */
 export function resetPermanentDeliveryAlertCooldown(): void {
-  lastPermanentAlertAt.clear();
+  lastDeliveryFailureAlertAt.clear();
 }
 
 /** Базовая отправка без retry. Используется в боте для ответов в реальном времени. */
@@ -213,8 +246,7 @@ async function sendWithRetry(
 
     if (permanent || nextRetryCount >= MAX_RETRIES) {
       await message.update({ deliveryStatus: 'delivery_failed' });
-      const alertAdmin = !permanent || shouldAlertAdminOnPermanentError(payload.clientId);
-      if (alertAdmin) {
+      if (await shouldAlertAdminOnDeliveryFailure(payload.clientId, message.id)) {
         alertAdminOnDeliveryFailure(message, payload, nextRetryCount, err, permanent);
       }
       throw err;

@@ -7,6 +7,7 @@ import { Op } from 'sequelize';
 import {
   Client,
   ClientEnrollment,
+  Message,
   Questionnaire,
   sendTelegramMessageWithRetry,
 } from '@nutrition-bot/shared';
@@ -19,6 +20,8 @@ interface QuestionnaireWithAssociations extends Questionnaire {
 
 /** SA/anketa.md: 24 часа. Для локальной отладки — QUESTIONNAIRE_REMINDER_INACTIVITY_MINUTES. */
 const DEFAULT_INACTIVITY_MINUTES = 24 * 60;
+/** Совпадает с окном дедупа алертов в sender.ts: не долбить чат после chat not found / block. */
+const RECENT_DELIVERY_FAILURE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export function resolveQuestionnaireReminderInactivityMinutes(override?: number): number {
   if (override !== undefined && Number.isInteger(override) && override > 0) {
@@ -105,6 +108,24 @@ export async function runQuestionnaireReminderJob(
 
     const questionNumber = questionnaire.currentQuestion + 1;
     const text = `Вы остановились на вопросе ${questionNumber}. Давайте продолжим — это займёт совсем немного времени.`;
+
+    if (
+      await Message.findOne({
+        where: {
+          clientId: client.id,
+          deliveryStatus: 'delivery_failed',
+          retryCount: 3,
+          createdAt: { [Op.gte]: new Date(Date.now() - RECENT_DELIVERY_FAILURE_WINDOW_MS) },
+        },
+        attributes: ['id'],
+      })
+    ) {
+      logger.info(
+        { clientId: client.id, questionnaireId: questionnaire.id },
+        'Пропуск напоминания: клиент недавно недоступен в Telegram',
+      );
+      continue;
+    }
 
     // Фиксируем попытку сразу: иначе при сбое (chat not found) cron каждые 2 мин
     // снова выбирает ту же анкету и спамит администратора алертами.
