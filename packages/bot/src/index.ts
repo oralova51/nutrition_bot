@@ -10,6 +10,7 @@ import {
 } from '@nutrition-bot/shared';
 import type { Server } from 'node:http';
 import { createBot } from './bot.js';
+import { registerBotCommands } from './commands/menu.js';
 import {
   ALLOWED_UPDATES,
   resolveBotMode,
@@ -69,6 +70,7 @@ async function main(): Promise<void> {
 
   const me = await bot.api.getMe();
   logger.info({ botUsername: me.username, mode }, 'Токен бота проверен (getMe)');
+  await registerBotCommands(bot, logger);
 
   if (mode === 'webhook') {
     await startWebhook();

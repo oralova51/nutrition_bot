@@ -60,6 +60,23 @@ export function resolveReviewUrls(): ReviewUrls {
   return { gis2, yandex };
 }
 
+const DEFAULT_COMPANY_SITE_URL = 'https://lpg39.ru';
+
+/** Сайт студии для команды /site. */
+export function resolveCompanySiteUrl(): string {
+  const raw = process.env.COMPANY_SITE_URL?.trim();
+  return raw || DEFAULT_COMPANY_SITE_URL;
+}
+
+/**
+ * Ссылка на оплату абонемента (ЮKassa) для команды /buy.
+ * Пока не задана — бот отвечает, что ссылка скоро появится.
+ */
+export function resolveSubscriptionCheckoutUrl(): string | undefined {
+  const raw = process.env.SUBSCRIPTION_CHECKOUT_URL?.trim();
+  return raw || undefined;
+}
+
 export function resolveWebhookConfig(): WebhookConfig {
   const url = process.env.WEBHOOK_URL;
   const secretToken = process.env.WEBHOOK_SECRET_TOKEN;

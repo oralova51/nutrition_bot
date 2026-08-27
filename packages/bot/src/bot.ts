@@ -3,6 +3,7 @@
 
 import { Bot, GrammyError, HttpError } from 'grammy';
 import type { Logger } from 'pino';
+import { handleBuyCommand, handleSiteCommand } from './commands/menu.js';
 import { createStartHandler } from './commands/start.js';
 import type { BotContext } from './context.js';
 import {
@@ -31,6 +32,8 @@ export function createBot(token: string, logger: Logger): Bot<BotContext> {
   bot.command('start', createStartHandler(logger));
   bot.command('admin', handleAdminCommand);
   bot.command('settings', handleSettingsCommand);
+  bot.command('site', handleSiteCommand);
+  bot.command('buy', handleBuyCommand);
   bot.command('stop', handleStopCommand);
   bot.command('pause', handlePauseCommand);
 

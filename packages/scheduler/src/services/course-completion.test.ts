@@ -111,7 +111,7 @@ describe('course-completion pure functions', () => {
   });
 
   describe('generateAiSummary', () => {
-    it('includes days, records, calories and adherence', () => {
+    it('includes days, records and calories', () => {
       const stats: DiaryStats = {
         totalDays: 7,
         totalRecords: 5,
@@ -119,11 +119,24 @@ describe('course-completion pure functions', () => {
         avgCalories: 1500,
         topProducts: ['борщ', 'хлеб'],
       };
-      const summary = generateAiSummary(stats, 75);
+      const summary = generateAiSummary(stats);
       expect(summary).toContain('Дней курса: 7');
       expect(summary).toContain('записей в дневнике: 5');
-      expect(summary).toContain('Соблюдение рекомендаций: 75%');
+      expect(summary).toContain('Средняя калорийность: 1500 ккал/день');
+      expect(summary).not.toContain('Соблюдение рекомендаций');
       expect(summary).toContain('борщ');
+    });
+
+    it('omits calories when the client never entered them', () => {
+      const stats: DiaryStats = {
+        totalDays: 3,
+        totalRecords: 4,
+        filledEntries: 4,
+        avgCalories: null,
+      };
+      const summary = generateAiSummary(stats);
+      expect(summary).not.toContain('Средняя калорийность');
+      expect(summary).not.toContain('ккал');
     });
   });
 
@@ -146,9 +159,30 @@ describe('course-completion pure functions', () => {
       } as unknown as Report;
       const message = formatReportMessage(report);
       expect(message).toContain('Дней курса: 7, записей: 5 (заполнено: 4)');
+      expect(message).toContain('Средняя калорийность: 1500 ккал/день');
+      expect(message).not.toContain('Соблюдение рекомендаций');
       expect(message).toContain('&lt;скрипт&gt;');
       expect(message).toContain('&lt;проблема&gt;');
       expect(message).toContain('Итоги курса.');
+    });
+
+    it('omits calories when avgCalories is missing', () => {
+      const report = {
+        periodStart: '2026-08-01',
+        periodEnd: '2026-08-03',
+        diaryStats: {
+          totalDays: 3,
+          totalRecords: 4,
+          filledEntries: 4,
+          avgCalories: null,
+        },
+        adherencePercent: 0,
+        problemAreas: [],
+        aiSummary: null,
+      } as unknown as Report;
+      const message = formatReportMessage(report);
+      expect(message).not.toContain('Средняя калорийность');
+      expect(message).not.toContain('ккал');
     });
   });
 

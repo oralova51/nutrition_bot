@@ -595,6 +595,7 @@ Admin API **не вызывает** Telegram напрямую. Ниже — ме
 | [setWebhook](https://core.telegram.org/bots/api#setwebhook) | Webhook (prod) | 2.1 |
 | [getWebhookInfo](https://core.telegram.org/bots/api#getwebhookinfo) | Мониторинг webhook | 2.1 |
 | [deleteWebhook](https://core.telegram.org/bots/api#deletewhook) | Переключение polling ↔ webhook | 2.1 |
+| [setMyCommands](https://core.telegram.org/bots/api#setmycommands) | Публичное меню: `/settings`, `/site`, `/buy` | меню |
 
 **Рекомендуемые `allowed_updates` для MVP:**
 
@@ -606,7 +607,7 @@ Admin API **не вызывает** Telegram напрямую. Ниже — ме
 
 | Update field | Обработка |
 |--------------|-----------|
-| `message` | Текст, фото, команды `/start`, `/settings`, `/stop` |
+| `message` | Текст, фото, команды `/start`, `/settings`, `/site`, `/buy`, `/stop` |
 | `message.text` | Deep link `/start enr_...`, ответы анкеты, дневник |
 | `message.photo` | Фото еды (ФТ-5) |
 | `message.from.id` | `telegramId` → Client |

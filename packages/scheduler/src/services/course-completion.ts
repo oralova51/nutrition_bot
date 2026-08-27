@@ -181,18 +181,17 @@ export function countCourseDays(startDate: string, endDate: string): number {
   );
 }
 
-export function generateAiSummary(stats: DiaryStats, adherence: number | null): string {
-  const avgCalories = stats.avgCalories ?? '—';
+export function generateAiSummary(stats: DiaryStats): string {
   const days = stats.totalDays ?? 0;
   const records = stats.totalRecords ?? 0;
   const filled = stats.filledEntries ?? 0;
-  const adherenceText = adherence !== null ? `${adherence}%` : '—';
 
   let summary =
     'Спасибо за сотрудничество! Вот как я могу подытожить результаты питания во время курса:\n\n';
   summary += `• Дней курса: ${days}, записей в дневнике: ${records} (заполнено: ${filled}).\n`;
-  summary += `• Средняя калорийность: ${avgCalories} ккал/день.\n`;
-  summary += `• Соблюдение рекомендаций: ${adherenceText}.\n`;
+  if (typeof stats.avgCalories === 'number') {
+    summary += `• Средняя калорийность: ${stats.avgCalories} ккал/день.\n`;
+  }
 
   if (stats.topProducts && stats.topProducts.length > 0) {
     summary += `• Чаще всего встречалось: ${stats.topProducts.slice(0, 5).join(', ')}.\n`;
@@ -216,10 +215,13 @@ export function formatReportMessage(report: Report): string {
     `Период: ${report.periodStart} — ${report.periodEnd}`,
     '',
     `📊 Дней курса: ${stats.totalDays ?? 0}, записей: ${stats.totalRecords ?? 0} (заполнено: ${stats.filledEntries ?? 0})`,
-    `🔥 Средняя калорийность: ${stats.avgCalories ?? '—'} ккал/день`,
-    `✅ Соблюдение рекомендаций: ${report.adherencePercent ?? '—'}%`,
-    '',
   ];
+
+  if (typeof stats.avgCalories === 'number') {
+    lines.push(`🔥 Средняя калорийность: ${stats.avgCalories} ккал/день`);
+  }
+
+  lines.push('');
 
   if (stats.topProducts && stats.topProducts.length > 0) {
     lines.push(`🍽 Топ-5 продуктов: ${escapeHtml(stats.topProducts.join(', '))}`);
@@ -336,7 +338,7 @@ export async function buildFinalReport(
     adherenceTrend: null,
   };
 
-  const aiSummary = generateAiSummary(diaryStats, adherencePercent);
+  const aiSummary = generateAiSummary(diaryStats);
 
   const sequelize = getSequelize();
   return sequelize.transaction(async (transaction) => {
