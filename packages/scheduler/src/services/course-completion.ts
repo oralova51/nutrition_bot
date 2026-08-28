@@ -1,11 +1,13 @@
-// Сервис завершения курса: генерация итогового Report и отправка запроса feedback.
-// Реализует roadmap 7.1–7.18, ФТ-13, ФТ-14, ФТ-15, ФТ-23.
+// Сервис завершения курса: генерация итогового Report, сводка администратору,
+// отправка клиенту и запрос feedback.
+// Реализует roadmap 7.1–7.18 и этап 15, ФТ-13, ФТ-14, ФТ-15, ФТ-19, ФТ-23.
 
 import { format } from 'date-fns';
 import { Op } from 'sequelize';
 import {
   Client,
   ClientEnrollment,
+  Course,
   NutritionDiary,
   Recommendation,
   Report,
@@ -16,6 +18,7 @@ import {
   type ReportType,
 } from '@nutrition-bot/shared';
 import type { Logger } from 'pino';
+import { notifyAdminAboutCourseCompletion } from './admin-course-summary.js';
 import { sendRenewalOffer } from './course-renewal.js';
 
 interface EnrollmentWithClient extends ClientEnrollment {
@@ -186,9 +189,8 @@ export function generateAiSummary(stats: DiaryStats): string {
   const records = stats.totalRecords ?? 0;
   const filled = stats.filledEntries ?? 0;
 
-  let summary =
-    'Спасибо за сотрудничество! Вот как я могу подытожить результаты питания во время курса:\n\n';
-  summary += `• Дней курса: ${days}, записей в дневнике: ${records} (заполнено: ${filled}).\n`;
+  let summary = 'Спасибо за сотрудничество! Вот как я могу подытожить результаты питания:\n\n';
+  summary += `• Дней: ${days}, записей в дневнике: ${records} (заполнено: ${filled}).\n`;
   if (typeof stats.avgCalories === 'number') {
     summary += `• Средняя калорийность: ${stats.avgCalories} ккал/день.\n`;
   }
@@ -209,12 +211,12 @@ export function generateAiSummary(stats: DiaryStats): string {
 export function formatReportMessage(report: Report): string {
   const stats = report.diaryStats;
   const lines = [
-    '<b>🎉 Курс завершён!</b>',
+    '<b>🎉 Поздравляю! Курс по питанию завершён!</b>',
     '',
     '<b>Итоговый отчёт о питании</b>',
     `Период: ${report.periodStart} — ${report.periodEnd}`,
     '',
-    `📊 Дней курса: ${stats.totalDays ?? 0}, записей: ${stats.totalRecords ?? 0} (заполнено: ${stats.filledEntries ?? 0})`,
+    `📊 Дней: ${stats.totalDays ?? 0}, записей: ${stats.totalRecords ?? 0} (заполнено: ${stats.filledEntries ?? 0})`,
   ];
 
   if (typeof stats.avgCalories === 'number') {
@@ -268,6 +270,11 @@ async function findEnrollmentsToComplete(
         as: 'client',
         required: true,
         where: { telegramId: { [Op.ne]: null } },
+      },
+      {
+        model: Course,
+        as: 'course',
+        required: false,
       },
     ],
   });
@@ -426,6 +433,7 @@ export async function completeCourse(enrollment: ClientEnrollment, logger: Logge
   }
 
   const report = await buildFinalReport(enrollment);
+  await notifyAdminAboutCourseCompletion(enrollmentWithClient, report, logger);
   await sendReportToTelegram(enrollmentWithClient, report);
   await requestFeedback(enrollmentWithClient);
   await sendRenewalOffer(enrollment, logger);

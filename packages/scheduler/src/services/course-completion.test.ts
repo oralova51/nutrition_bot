@@ -120,7 +120,7 @@ describe('course-completion pure functions', () => {
         topProducts: ['борщ', 'хлеб'],
       };
       const summary = generateAiSummary(stats);
-      expect(summary).toContain('Дней курса: 7');
+      expect(summary).toContain('Дней: 7');
       expect(summary).toContain('записей в дневнике: 5');
       expect(summary).toContain('Средняя калорийность: 1500 ккал/день');
       expect(summary).not.toContain('Соблюдение рекомендаций');
@@ -158,7 +158,7 @@ describe('course-completion pure functions', () => {
         aiSummary: 'Итоги курса.',
       } as unknown as Report;
       const message = formatReportMessage(report);
-      expect(message).toContain('Дней курса: 7, записей: 5 (заполнено: 4)');
+      expect(message).toContain('Дней: 7, записей: 5 (заполнено: 4)');
       expect(message).toContain('Средняя калорийность: 1500 ккал/день');
       expect(message).not.toContain('Соблюдение рекомендаций');
       expect(message).toContain('&lt;скрипт&gt;');

@@ -112,6 +112,7 @@ Seed-клиенты (`7900120*` / фамилия `Пилот-*`) **исключ�
 - [ ] `POST /internal/jobs/course-completion` `{ "force": true, "clientId" }`
 - [ ] `Report.type=final`, enrollment → `completed`
 - [ ] В Telegram пришёл итоговый отчёт
+- [ ] Администратору пришла короткая сводка о клиенте и питании
 
 ### CJM 11 — Оценка курса (ФТ-15)
 
