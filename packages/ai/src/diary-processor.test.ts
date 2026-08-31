@@ -74,6 +74,7 @@ function fakeEngine(proposals: RecommendationProposal[]): AIEngine {
     generateRecommendationText: vi.fn().mockResolvedValue(RECOMMENDATION_TEXT),
     generateEveningSummary: vi.fn(),
     checkDiaryClarity: vi.fn(),
+    extractTopProducts: vi.fn(),
   };
 }
 

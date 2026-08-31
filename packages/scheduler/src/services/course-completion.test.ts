@@ -1,7 +1,20 @@
 // Unit-тесты для чистых функций завершения курса (roadmap 7.14, idempotency, escapeHtml).
 // Используем Vitest.
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { createAIEngine } = vi.hoisted(() => ({
+  createAIEngine: vi.fn(),
+}));
+
+vi.mock('@nutrition-bot/ai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@nutrition-bot/ai')>();
+  return {
+    ...actual,
+    createAIEngine,
+  };
+});
+
 import {
   average,
   buildFeedbackKeyboard,
@@ -15,6 +28,7 @@ import {
   getEnrollmentPeriodBounds,
   normalizeWord,
   percentage,
+  resolveTopProducts,
 } from './course-completion.js';
 import type { DiaryStats, Report } from '@nutrition-bot/shared';
 
@@ -43,6 +57,63 @@ describe('course-completion pure functions', () => {
         { description: 'хлеб суп', status: 'filled' },
       ] as unknown as Parameters<typeof extractTopWords>[0];
       expect(extractTopWords(entries, 2)).toEqual(['борщ', 'хлеб']);
+    });
+
+    it('не включает воду и граммы, напитки оставляет', () => {
+      const entries = [
+        { description: 'Я съел 100 грамм мяса', status: 'filled' },
+        { description: 'Я выпила стакан воды', status: 'filled' },
+        { description: 'Выпила чай', status: 'filled' },
+        { description: 'Кофе', status: 'filled' },
+      ] as unknown as Parameters<typeof extractTopWords>[0];
+      const top = extractTopWords(entries, 5);
+      expect(top).not.toContain('грамм');
+      expect(top).not.toContain('вода');
+      expect(top).not.toContain('воды');
+      expect(top).not.toContain('стакан');
+      expect(top).toEqual(expect.arrayContaining(['мяса', 'чай', 'кофе']));
+    });
+  });
+
+  describe('resolveTopProducts', () => {
+    beforeEach(() => {
+      createAIEngine.mockReset();
+    });
+
+    it('вычищает воду и граммы из ответа модели, напитки оставляет', async () => {
+      createAIEngine.mockReturnValue({
+        extractTopProducts: vi.fn().mockResolvedValue({
+          topProducts: ['вода', 'грамм', 'чай', 'кофе'],
+          metadata: { engine: 'fake' },
+        }),
+      });
+
+      const entries = [
+        { description: 'Я съел 100 грамм мяса', status: 'filled' },
+        { description: 'Я выпила стакан воды', status: 'filled' },
+        { description: 'Выпила чай', status: 'filled' },
+        { description: 'Кофе', status: 'filled' },
+      ] as unknown as Parameters<typeof resolveTopProducts>[0];
+      const top = await resolveTopProducts(entries, 5);
+      expect(top).not.toContain('грамм');
+      expect(top).not.toContain('вода');
+      expect(top).not.toContain('воды');
+      expect(top).toEqual(expect.arrayContaining(['чай', 'кофе']));
+    });
+
+    it('при сбое ИИ не бросает ошибку и собирает топ эвристикой без воды', async () => {
+      createAIEngine.mockReturnValue({
+        extractTopProducts: vi.fn().mockRejectedValue(new Error('AI недоступен')),
+      });
+
+      const entries = [
+        { description: 'Я выпила стакан воды', status: 'filled' },
+        { description: 'Выпила чай', status: 'filled' },
+      ] as unknown as Parameters<typeof resolveTopProducts>[0];
+      const top = await resolveTopProducts(entries, 5);
+      expect(top).not.toContain('вода');
+      expect(top).not.toContain('воды');
+      expect(top).toContain('чай');
     });
   });
 

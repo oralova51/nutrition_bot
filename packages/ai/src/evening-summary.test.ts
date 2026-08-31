@@ -60,6 +60,7 @@ function fakeEngine(): AIEngine {
       metadata: { engine: 'fake' },
     }),
     checkDiaryClarity: vi.fn(),
+    extractTopProducts: vi.fn(),
   };
 }
 
@@ -189,6 +190,7 @@ describe('maybeSendEveningSummaryIfDue — сводка не уходит два
       where: {
         clientId: 'client-1',
         type: 'evening_summary',
+        deliveryStatus: { [Op.in]: ['sent', 'delivered', 'read'] },
         createdAt: { [Op.between]: [LOCAL_DAY_START, LOCAL_DAY_END] },
       },
     });
@@ -217,6 +219,27 @@ describe('maybeSendEveningSummaryIfDue — сводка не уходит два
       category: 'optional',
     });
     expect(result).toEqual({ sent: true, skipped: false, reportId: report.id });
+  });
+
+  it('санитизирует HTML нейронки, иначе Telegram отвергает сводку', async () => {
+    const { client, engine } = arrange();
+    vi.mocked(engine.generateEveningSummary).mockResolvedValue({
+      enough: ['белок'],
+      missing: ['овощи'],
+      toAdd: ['салат'],
+      improvements: [],
+      summaryText: '<b>Сводка</b><br>белка < 20 г',
+      metadata: { engine: 'fake' },
+    });
+
+    await maybeSendEveningSummaryIfDue({ client, enrollmentId: 'enrollment-1' });
+
+    expect(sendTelegramMessageWithRetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: '<b>Сводка</b>\nбелка &lt; 20 г',
+        type: 'evening_summary',
+      }),
+    );
   });
 });
 

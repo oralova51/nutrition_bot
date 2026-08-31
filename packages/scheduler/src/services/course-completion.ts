@@ -17,6 +17,11 @@ import {
   type ProblemArea,
   type ReportType,
 } from '@nutrition-bot/shared';
+import {
+  createAIEngine,
+  extractTopProductsHeuristic,
+  finalizeTopProducts,
+} from '@nutrition-bot/ai';
 import type { Logger } from 'pino';
 import { notifyAdminAboutCourseCompletion } from './admin-course-summary.js';
 import { sendRenewalOffer } from './course-renewal.js';
@@ -43,68 +48,6 @@ const PROBLEM_KEYWORDS = [
   'сдоба',
 ];
 
-const STOP_WORDS = new Set([
-  'и',
-  'в',
-  'на',
-  'с',
-  'по',
-  'к',
-  'а',
-  'не',
-  'я',
-  'что',
-  'как',
-  'до',
-  'для',
-  'за',
-  'от',
-  'из',
-  'у',
-  'же',
-  'то',
-  'бы',
-  'ли',
-  'но',
-  'это',
-  'так',
-  'тут',
-  'там',
-  'при',
-  'под',
-  'про',
-  'над',
-  'без',
-  'во',
-  'со',
-  'около',
-  'после',
-  'мне',
-  'меня',
-  'мой',
-  'моя',
-  'мои',
-  'моё',
-  'моего',
-  'моей',
-  'моих',
-  'съел',
-  'съела',
-  'ела',
-  'ел',
-  'пила',
-  'пил',
-  'выпил',
-  'выпила',
-  'съедено',
-  'поел',
-  'поела',
-  'завтрак',
-  'обед',
-  'ужин',
-  'перекус',
-]);
-
 export function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -117,21 +60,22 @@ export function normalizeWord(word: string): string {
 }
 
 export function extractTopWords(entries: NutritionDiary[], count: number): string[] {
-  const frequency = new Map<string, number>();
-  for (const entry of entries) {
-    const text = entry.description ?? '';
-    const words = text.split(/\s+/);
-    for (const raw of words) {
-      const word = normalizeWord(raw);
-      if (word.length < 3 || STOP_WORDS.has(word)) continue;
-      frequency.set(word, (frequency.get(word) ?? 0) + 1);
-    }
-  }
+  return extractTopProductsHeuristic(entries, count);
+}
 
-  return [...frequency.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, count)
-    .map(([word]) => word);
+export async function resolveTopProducts(
+  entries: NutritionDiary[],
+  count: number,
+): Promise<string[]> {
+  if (entries.length === 0) return [];
+  try {
+    const result = await createAIEngine().extractTopProducts({ entries, limit: count });
+    const cleaned = finalizeTopProducts(result.topProducts, entries, count);
+    if (cleaned.length > 0) return cleaned;
+  } catch {
+    // Сбой ИИ не должен ломать генерацию итогового отчёта.
+  }
+  return extractTopProductsHeuristic(entries, count);
 }
 
 export function extractTopProblems(entries: NutritionDiary[], count: number): ProblemArea[] {
@@ -325,7 +269,7 @@ export async function buildFinalReport(
     filledEntries: filled.length,
     pendingEntries: pending.length,
     mealsByHour: buildMealsByHour(filled),
-    topProducts: extractTopWords(filled, 5),
+    topProducts: await resolveTopProducts(filled, 5),
     topProblems: extractTopProblems(filled, 5).map((p) => p.area),
   };
 

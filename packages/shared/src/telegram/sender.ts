@@ -10,13 +10,18 @@ import { LOG_EVENTS } from '../logging/types.js';
 import { Message, type MessageCategory, type MessageType } from '../models/message.js';
 import { sendAdminAlert } from './alerts.js';
 import { getBot } from './bot.js';
+import { stripTelegramHtml } from './html.js';
 
 const logger = createLogger('telegram-sender');
 
 const RETRY_DELAY_MS = 5 * 60 * 1000;
 const MAX_RETRIES = 3;
-/** 400/401/403/404 Telegram не «чинятся» повтором той же sendMessage. */
-const PERMANENT_TELEGRAM_ERROR_CODES = new Set([400, 401, 403, 404]);
+/**
+ * Коды, которые не чинятся повтором той же sendMessage.
+ * 400 специально НЕ входит: туда же попадают «can't parse entities» и «message is too long»
+ * у HTML-сводок нейронки — это ошибка разметки, а не мёртвый чат.
+ */
+const PERMANENT_TELEGRAM_ERROR_CODES = new Set([401, 403, 404]);
 const DELIVERY_FAILURE_ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const lastDeliveryFailureAlertAt = new Map<string, number>();
 
@@ -126,16 +131,21 @@ function getTelegramErrorCode(err: unknown): number | undefined {
 
 /**
  * Ошибки, которые не имеет смысла ретраить: чат не найден, бот заблокирован,
- * пользователь деактивирован. Сетевые сбои и 429/5xx — нет.
+ * пользователь деактивирован. Сетевые сбои, 429/5xx и битый HTML — нет.
  */
 export function isPermanentTelegramError(err: unknown): boolean {
-  const code = getTelegramErrorCode(err);
-  if (code !== undefined && PERMANENT_TELEGRAM_ERROR_CODES.has(code)) {
+  const text = formatError(err).toLowerCase();
+  if (PERMANENT_ERROR_TEXT_MARKERS.some((marker) => text.includes(marker))) {
     return true;
   }
 
+  const code = getTelegramErrorCode(err);
+  return code !== undefined && PERMANENT_TELEGRAM_ERROR_CODES.has(code);
+}
+
+export function isTelegramHtmlParseError(err: unknown): boolean {
   const text = formatError(err).toLowerCase();
-  return PERMANENT_ERROR_TEXT_MARKERS.some((marker) => text.includes(marker));
+  return text.includes("can't parse entities") || text.includes('cannot parse entities');
 }
 
 /**
@@ -185,6 +195,33 @@ export function resetPermanentDeliveryAlertCooldown(): void {
   lastDeliveryFailureAlertAt.clear();
 }
 
+async function dispatchTelegramMessage(
+  payload: TelegramMessagePayload,
+  text: string,
+  parseMode: TelegramParseMode | undefined,
+): Promise<{ message_id: number }> {
+  return getBot().api.sendMessage(payload.telegramId, text, {
+    ...(parseMode ? { parse_mode: parseMode } : {}),
+    ...(payload.replyMarkup ? { reply_markup: payload.replyMarkup } : {}),
+  });
+}
+
+async function sendOrStripHtml(payload: TelegramMessagePayload): Promise<{ message_id: number }> {
+  const parseMode = payload.parseMode ?? 'HTML';
+  try {
+    return await dispatchTelegramMessage(payload, payload.text, parseMode);
+  } catch (err) {
+    if (!isTelegramHtmlParseError(err)) {
+      throw err;
+    }
+    logger.warn(
+      { clientId: payload.clientId, type: payload.type },
+      'Telegram отверг HTML — отправляем ту же сводку без разметки',
+    );
+    return dispatchTelegramMessage(payload, stripTelegramHtml(payload.text), undefined);
+  }
+}
+
 /** Базовая отправка без retry. Используется в боте для ответов в реальном времени. */
 export async function sendTelegramMessage(
   payload: TelegramMessagePayload,
@@ -192,10 +229,7 @@ export async function sendTelegramMessage(
   const message = await createPendingMessage(payload, 0);
 
   try {
-    const telegramMessage = await getBot().api.sendMessage(payload.telegramId, payload.text, {
-      parse_mode: payload.parseMode ?? 'HTML',
-      ...(payload.replyMarkup ? { reply_markup: payload.replyMarkup } : {}),
-    });
+    const telegramMessage = await sendOrStripHtml(payload);
     return { telegramMessageId: telegramMessage.message_id, message };
   } catch (err) {
     await message.update({ deliveryStatus: 'delivery_failed', retryCount: 0 });
@@ -227,10 +261,7 @@ async function sendWithRetry(
   retryCount: number,
 ): Promise<TelegramSendResult> {
   try {
-    const telegramMessage = await getBot().api.sendMessage(payload.telegramId, payload.text, {
-      parse_mode: payload.parseMode ?? 'HTML',
-      ...(payload.replyMarkup ? { reply_markup: payload.replyMarkup } : {}),
-    });
+    const telegramMessage = await sendOrStripHtml(payload);
     return { telegramMessageId: telegramMessage.message_id, message };
   } catch (err) {
     const permanent = isPermanentTelegramError(err);

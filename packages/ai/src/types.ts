@@ -96,6 +96,18 @@ export interface ClarityCheckResult {
   question: string | null;
 }
 
+export interface TopProductsInput {
+  /** Заполненные записи дневника за период отчёта. */
+  entries: NutritionDiary[];
+  /** Сколько продуктов вернуть (по умолчанию 5). */
+  limit?: number;
+}
+
+export interface TopProductsResult {
+  topProducts: string[];
+  metadata: Record<string, unknown>;
+}
+
 export interface AIEngine {
   /** Проанализировать запись дневника и предложить рекомендации. */
   analyzeDiary(input: DiaryAnalysisInput): Promise<DiaryAnalysisResult>;
@@ -115,4 +127,10 @@ export interface AIEngine {
    * и какой мягкий вопрос задать клиенту.
    */
   checkDiaryClarity(input: ClarityCheckInput): Promise<ClarityCheckResult>;
+
+  /**
+   * Собрать топ часто встречаемых продуктов/напитков за период (ФТ-14).
+   * Вода в топ не входит; остальные напитки (чай, кофе, сок и т.п.) — входят.
+   */
+  extractTopProducts(input: TopProductsInput): Promise<TopProductsResult>;
 }

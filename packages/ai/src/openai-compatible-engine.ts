@@ -16,6 +16,8 @@ import type {
   EveningSummaryInput,
   EveningSummaryResult,
   RecommendationProposal,
+  TopProductsInput,
+  TopProductsResult,
 } from './types.js';
 import type { AIConfig } from './config.js';
 import {
@@ -27,11 +29,19 @@ import {
   CLARITY_CHECK_SYSTEM_PROMPT,
   EVENING_SUMMARY_SYSTEM_PROMPT,
   RECOMMENDATION_SYSTEM_PROMPT,
+  TOP_PRODUCTS_SYSTEM_PROMPT,
+  buildTopProductsUserPrompt,
 } from './prompts.js';
 import {
   buildHeuristicEveningSummary,
   composeEveningSummaryText,
 } from './evening-summary-heuristic.js';
+import {
+  DEFAULT_TOP_PRODUCTS_LIMIT,
+  extractTopProductsHeuristic,
+  finalizeTopProducts,
+  formatDiaryEntriesForTopProducts,
+} from './top-products.js';
 import { buildHistorySummary } from './history-summary.js';
 import { logger } from './logger.js';
 import { RateLimiter } from './rate-limiter.js';
@@ -248,9 +258,9 @@ export class OpenAICompatibleAIEngine implements AIEngine {
       } catch (err) {
         logger.error(
           { err, model: this.config.model, localDate: input.localDate },
-          'Ошибка при вызове AI: вечерняя сводка',
+          'Ошибка при вызове AI: вечерняя сводка — отправляем эвристический fallback',
         );
-        throw err;
+        return this.eveningSummaryFallback(input, 'provider_error');
       }
     }
 
@@ -258,7 +268,7 @@ export class OpenAICompatibleAIEngine implements AIEngine {
     const rawContent = response.choices[0]?.message?.content ?? '';
     let parsed: Partial<EveningSummaryResult> | null = null;
     try {
-      parsed = JSON.parse(rawContent) as Partial<EveningSummaryResult>;
+      parsed = JSON.parse(extractJson(rawContent)) as Partial<EveningSummaryResult>;
     } catch {
       logger.warn(
         {
@@ -285,23 +295,10 @@ export class OpenAICompatibleAIEngine implements AIEngine {
     }
 
     if (!parsed) {
-      const fallback = buildHeuristicEveningSummary(
-        input.dayEntries,
-        input.localDate,
-        input.clientContext,
-      );
-      return {
-        ...fallback,
-        metadata: {
-          ...fallback.metadata,
-          engine: 'openai-compatible-fallback',
-          model: this.config.model,
-          baseURL: this.config.baseURL,
-          usage: response.usage,
-          finishReason,
-          reason: 'invalid_json',
-        },
-      };
+      return this.eveningSummaryFallback(input, 'invalid_json', {
+        usage: response.usage,
+        finishReason,
+      });
     }
 
     const enough = Array.isArray(parsed.enough) ? parsed.enough.map(String) : [];
@@ -428,11 +425,13 @@ export class OpenAICompatibleAIEngine implements AIEngine {
     }
 
     const validMissingFields: ClarityMissingField[] = ['product', 'quantity', 'time', 'calories'];
-    const missingFields = (parsed?.missingFields ?? []).filter((field): field is ClarityMissingField =>
-      validMissingFields.includes(field),
+    const missingFields = (parsed?.missingFields ?? []).filter(
+      (field): field is ClarityMissingField => validMissingFields.includes(field),
     );
     const needsClarification =
-      typeof parsed?.needsClarification === 'boolean' ? parsed.needsClarification : missingFields.length > 0;
+      typeof parsed?.needsClarification === 'boolean'
+        ? parsed.needsClarification
+        : missingFields.length > 0;
     const question = typeof parsed?.question === 'string' ? parsed.question.trim() || null : null;
 
     const result: ClarityCheckResult = {
@@ -453,6 +452,141 @@ export class OpenAICompatibleAIEngine implements AIEngine {
     );
 
     return result;
+  }
+
+  async extractTopProducts(input: TopProductsInput): Promise<TopProductsResult> {
+    const limit = input.limit ?? DEFAULT_TOP_PRODUCTS_LIMIT;
+    const entriesSummary = formatDiaryEntriesForTopProducts(input.entries);
+    const userPrompt = buildTopProductsUserPrompt(entriesSummary, limit);
+    const maxTokens = Math.min(this.config.maxTokens, 512);
+
+    logger.debug(
+      { model: this.config.model, entries: input.entries.length, limit },
+      'Запрос к AI: топ продуктов итогового отчёта',
+    );
+
+    await this.rateLimiter.acquire();
+
+    let response;
+    try {
+      response = await this.client.chat.completions.create({
+        model: this.config.model,
+        messages: [
+          { role: 'system', content: TOP_PRODUCTS_SYSTEM_PROMPT },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: maxTokens,
+        temperature: this.config.temperature,
+        response_format: { type: 'json_object' },
+        thinking: { type: 'disabled' },
+      } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
+    } catch (firstErr) {
+      logger.warn(
+        { err: firstErr, model: this.config.model },
+        'Топ продуктов: запрос с thinking=disabled не прошёл, повторяю без него',
+      );
+      try {
+        response = await this.client.chat.completions.create({
+          model: this.config.model,
+          messages: [
+            { role: 'system', content: TOP_PRODUCTS_SYSTEM_PROMPT },
+            { role: 'user', content: userPrompt },
+          ],
+          max_tokens: maxTokens,
+          temperature: this.config.temperature,
+          response_format: { type: 'json_object' },
+        });
+      } catch (err) {
+        logger.error(
+          { err, model: this.config.model },
+          'Ошибка при вызове AI: топ продуктов — используем эвристический fallback',
+        );
+        return this.topProductsFallback(input, limit, 'provider_error');
+      }
+    }
+
+    const rawContent = response.choices[0]?.message?.content ?? '';
+    let parsed: { topProducts?: unknown } | null = null;
+    try {
+      parsed = JSON.parse(extractJson(rawContent)) as { topProducts?: unknown };
+    } catch {
+      logger.warn(
+        {
+          rawContentPreview: rawContent.slice(0, 300),
+          model: this.config.model,
+        },
+        'AI вернул некорректный JSON при сборе топа продуктов',
+      );
+    }
+
+    const candidates = Array.isArray(parsed?.topProducts)
+      ? parsed.topProducts.map((item) => String(item))
+      : [];
+    const topProducts = finalizeTopProducts(candidates, input.entries, limit);
+    const usedFallback = candidates.length === 0;
+
+    logger.info(
+      {
+        model: this.config.model,
+        entries: input.entries.length,
+        topProducts,
+        usedFallback,
+        usage: response.usage,
+      },
+      'AI: топ продуктов итогового отчёта собран',
+    );
+
+    return {
+      topProducts,
+      metadata: {
+        engine: usedFallback ? 'openai-compatible-fallback' : 'openai-compatible',
+        model: this.config.model,
+        baseURL: this.config.baseURL,
+        usage: response.usage,
+        finishReason: response.choices[0]?.finish_reason,
+        reason: usedFallback ? 'invalid_or_empty' : undefined,
+      },
+    };
+  }
+
+  private topProductsFallback(
+    input: TopProductsInput,
+    limit: number,
+    reason: string,
+  ): TopProductsResult {
+    return {
+      topProducts: extractTopProductsHeuristic(input.entries, limit),
+      metadata: {
+        engine: 'openai-compatible-fallback',
+        model: this.config.model,
+        baseURL: this.config.baseURL,
+        reason,
+      },
+    };
+  }
+
+  private eveningSummaryFallback(
+    input: EveningSummaryInput,
+    reason: string,
+    extras: { usage?: unknown; finishReason?: string | null } = {},
+  ): EveningSummaryResult {
+    const fallback = buildHeuristicEveningSummary(
+      input.dayEntries,
+      input.localDate,
+      input.clientContext,
+    );
+    return {
+      ...fallback,
+      metadata: {
+        ...fallback.metadata,
+        engine: 'openai-compatible-fallback',
+        model: this.config.model,
+        baseURL: this.config.baseURL,
+        usage: extras.usage,
+        finishReason: extras.finishReason,
+        reason,
+      },
+    };
   }
 
   private buildPreviousHistorySummary(input: DiaryAnalysisInput): string | undefined {

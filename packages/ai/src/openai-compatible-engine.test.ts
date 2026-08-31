@@ -301,13 +301,27 @@ describe('generateEveningSummary', () => {
     expect(result.summaryText).toContain('Привет, Анна!');
   });
 
-  it('пробрасывает ошибку, если не прошёл и повторный запрос', async () => {
+  it('падает на эвристику, если не прошёл и повторный запрос', async () => {
     create.mockRejectedValue(new Error('503 Service Unavailable'));
 
-    await expect(engine().generateEveningSummary(summaryInput)).rejects.toThrow(
-      '503 Service Unavailable',
-    );
+    const result = await engine().generateEveningSummary(summaryInput);
+
     expect(create).toHaveBeenCalledTimes(2);
+    expect(result.metadata).toMatchObject({
+      engine: 'openai-compatible-fallback',
+      reason: 'provider_error',
+    });
+    expect(result.summaryText).toContain('Вечерняя сводка за 2026-01-15');
+    expect(result.summaryText).toContain('Овсянка с яблоком');
+  });
+
+  it('достаёт JSON, даже если модель обернула его в markdown', async () => {
+    create.mockResolvedValue(completion(`\`\`\`json\n${validSummary}\n\`\`\``));
+
+    const result = await engine().generateEveningSummary(summaryInput);
+
+    expect(result.enough).toEqual(['Белок был']);
+    expect(result.metadata).toMatchObject({ engine: 'openai-compatible' });
   });
 
   it('падает на эвристику, если модель прислала не JSON', async () => {
@@ -361,5 +375,63 @@ describe('generateEveningSummary', () => {
       reason: 'empty_summary',
     });
     expect(result.summaryText).toContain('Куриная грудка и салат');
+  });
+});
+
+describe('extractTopProducts', () => {
+  const diaryEntries = [
+    makeDiaryEntry({ id: 'diary-1', description: 'Я съел 100 грамм мяса' }),
+    makeDiaryEntry({ id: 'diary-2', description: 'Я выпила стакан воды' }),
+    makeDiaryEntry({ id: 'diary-3', description: 'Выпила чай' }),
+    makeDiaryEntry({ id: 'diary-4', description: 'Кофе' }),
+  ];
+
+  it('просит JSON и отключает reasoning', async () => {
+    create.mockResolvedValue(completion('{"topProducts":["мясо","чай"]}'));
+
+    await engine().extractTopProducts({ entries: diaryEntries, limit: 5 });
+
+    const request = create.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(request.response_format).toEqual({ type: 'json_object' });
+    expect(request.thinking).toEqual({ type: 'disabled' });
+    expect(userPromptOf(0)).toContain('Простую воду не включай');
+    expect(userPromptOf(0)).toContain('Я выпила стакан воды');
+  });
+
+  it('вычищает воду и граммы, даже если модель их вернула, напитки оставляет', async () => {
+    create.mockResolvedValue(
+      completion(JSON.stringify({ topProducts: ['грамм', 'вода', 'чай', 'мясо', 'кофе'] })),
+    );
+
+    const result = await engine().extractTopProducts({ entries: diaryEntries, limit: 5 });
+
+    expect(result.topProducts).not.toContain('грамм');
+    expect(result.topProducts).not.toContain('вода');
+    expect(result.topProducts).toEqual(expect.arrayContaining(['чай', 'мясо', 'кофе']));
+    expect(result.metadata).toMatchObject({ engine: 'openai-compatible' });
+  });
+
+  it('при сбое провайдера не бросает ошибку и падает на эвристику без воды', async () => {
+    create.mockRejectedValue(new Error('503 Service Unavailable'));
+
+    const result = await engine().extractTopProducts({ entries: diaryEntries, limit: 5 });
+
+    expect(result.metadata).toMatchObject({
+      engine: 'openai-compatible-fallback',
+      reason: 'provider_error',
+    });
+    expect(result.topProducts).not.toContain('вода');
+    expect(result.topProducts).not.toContain('грамм');
+    expect(result.topProducts).toEqual(expect.arrayContaining(['чай', 'кофе', 'мяса']));
+  });
+
+  it('при битом JSON добирает топ эвристикой', async () => {
+    create.mockResolvedValue(completion('вот топ: вода, грамм, чай'));
+
+    const result = await engine().extractTopProducts({ entries: diaryEntries, limit: 5 });
+
+    expect(result.metadata).toMatchObject({ engine: 'openai-compatible-fallback' });
+    expect(result.topProducts).not.toContain('вода');
+    expect(result.topProducts).toContain('чай');
   });
 });

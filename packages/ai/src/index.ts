@@ -10,5 +10,6 @@ export * from './proposal-selection.js';
 export * from './evening-summary.js';
 export * from './evening-summary-heuristic.js';
 export * from './treat-pattern.js';
+export * from './top-products.js';
 export * from './rate-limiter.js';
 export * from './logger.js';

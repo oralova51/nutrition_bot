@@ -25,6 +25,7 @@ function fakeEngine(): AIEngine {
     generateRecommendationText: vi.fn(),
     generateEveningSummary: vi.fn(),
     checkDiaryClarity,
+    extractTopProducts: vi.fn(),
   };
 }
 

@@ -16,6 +16,7 @@ import { sendAdminAlert } from './alerts.js';
 import { getBot } from './bot.js';
 import {
   isPermanentTelegramError,
+  isTelegramHtmlParseError,
   resetPermanentDeliveryAlertCooldown,
   sendTelegramMessage,
   sendTelegramMessageWithRetry,
@@ -273,6 +274,25 @@ describe('sendTelegramMessageWithRetry', () => {
     expect(sendAdminAlert).toHaveBeenCalledOnce();
     expect(vi.mocked(sendAdminAlert).mock.calls[0]?.[0]).not.toContain('Постоянная ошибка');
   });
+
+  it('при битом HTML сразу шлёт ту же сводку без разметки', async () => {
+    sendMessage
+      .mockRejectedValueOnce(
+        telegramApiError(400, 'Bad Request: can\'t parse entities: Unsupported start tag "br"'),
+      )
+      .mockResolvedValueOnce({ message_id: 556 });
+
+    const result = await sendTelegramMessageWithRetry({
+      ...payload,
+      text: '<b>Сводка</b><br>обед',
+    });
+
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sendMessage.mock.calls[1]?.[1]).toBe('Сводка\nобед');
+    expect(sendMessage.mock.calls[1]?.[2]).toEqual({});
+    expect(result.telegramMessageId).toBe(556);
+    expect(record.deliveryStatus).toBe('sent');
+  });
 });
 
 describe('isPermanentTelegramError', () => {
@@ -280,6 +300,19 @@ describe('isPermanentTelegramError', () => {
     expect(
       isPermanentTelegramError(
         new Error("Call to 'sendMessage' failed! (400: Bad Request: chat not found)"),
+      ),
+    ).toBe(true);
+  });
+
+  it('не считает битый HTML постоянной ошибкой чата', () => {
+    expect(
+      isPermanentTelegramError(
+        telegramApiError(400, 'Bad Request: can\'t parse entities: Unsupported start tag "br"'),
+      ),
+    ).toBe(false);
+    expect(
+      isTelegramHtmlParseError(
+        telegramApiError(400, 'Bad Request: can\'t parse entities: Unsupported start tag "br"'),
       ),
     ).toBe(true);
   });

@@ -56,6 +56,7 @@ function fakeEngine(
     analyzeDiary: vi.fn(),
     generateRecommendationText: vi.fn(),
     generateEveningSummary: vi.fn(),
+    extractTopProducts: vi.fn(),
   };
 }
 
@@ -275,6 +276,7 @@ describe('handleNutritionDiaryEntry — AI-проверка полноты (ФТ
       analyzeDiary: vi.fn(),
       generateRecommendationText: vi.fn(),
       generateEveningSummary: vi.fn(),
+      extractTopProducts: vi.fn(),
     });
 
     await handleNutritionDiaryEntry(context(), 'я съела яйца');

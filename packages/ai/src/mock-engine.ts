@@ -21,8 +21,11 @@ import type {
   RecommendationPriority,
   RecommendationProposal,
   RecommendationType,
+  TopProductsInput,
+  TopProductsResult,
 } from './types.js';
 import { buildHeuristicEveningSummary } from './evening-summary-heuristic.js';
+import { DEFAULT_TOP_PRODUCTS_LIMIT, extractTopProductsHeuristic } from './top-products.js';
 import { buildHistorySummary, listEntriesInLocalWindow } from './history-summary.js';
 import { TREAT_PATTERN_MIN_COUNT, countTreatClass, detectTreatClass } from './treat-pattern.js';
 
@@ -501,5 +504,13 @@ export class MockAIEngine implements AIEngine {
   checkDiaryClarity(input: ClarityCheckInput): Promise<ClarityCheckResult> {
     void input.clientContext;
     return Promise.resolve(checkClarityHeuristic(input.description));
+  }
+
+  extractTopProducts(input: TopProductsInput): Promise<TopProductsResult> {
+    const limit = input.limit ?? DEFAULT_TOP_PRODUCTS_LIMIT;
+    return Promise.resolve({
+      topProducts: extractTopProductsHeuristic(input.entries, limit),
+      metadata: { engine: 'mock' },
+    });
   }
 }

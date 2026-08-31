@@ -16,6 +16,7 @@ import {
   formatZonedDate,
   getZonedDayRange,
   isLocalTimeOnOrAfter,
+  sanitizeTelegramHtml,
   sendTelegramMessageWithRetry,
 } from '@nutrition-bot/shared';
 import { createAIEngine } from './factory.js';
@@ -108,7 +109,7 @@ export async function buildAndSendEveningSummary(
 
   await sendTelegramMessageWithRetry({
     telegramId: client.telegramId,
-    text: summary.summaryText,
+    text: sanitizeTelegramHtml(summary.summaryText),
     clientId: client.id,
     type: 'evening_summary',
     category: 'optional',
@@ -182,6 +183,7 @@ async function hasEveningSummaryToday(clientId: string, start: Date, end: Date):
     where: {
       clientId,
       type: 'evening_summary',
+      deliveryStatus: { [Op.in]: ['sent', 'delivered', 'read'] },
       createdAt: { [Op.between]: [start, end] },
     },
   });
