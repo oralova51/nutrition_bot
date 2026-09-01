@@ -134,7 +134,7 @@ Telegram-бот «Виртуальный консультант по питан�
 
 ## 10. Ошибки и edge cases (stage10-errors.md)
 
-- **ФТ-21:** Централизованный retry отправки в Telegram (3×5 мин) в `packages/shared/src/telegram/sender.ts`; постоянные ошибки (`chat not found`, bot blocked) без ретраев и с дедупом алерта 24 ч (по таблице `Message`, переживает рестарт процесса); битый HTML (`can't parse entities`) не считается мёртвым чатом — сообщение уходит без разметки; статус `delivery_failed` на `Message`; уведомление администратора при исчерпании retry.
+- **ФТ-21:** Централизованный retry отправки в Telegram (3×5 мин) в `packages/shared/src/telegram/sender.ts`; постоянные ошибки (`chat not found`, bot blocked) без ретраев и с дедупом алерта 24 ч (по таблице `Message`, переживает рестарт процесса); битый HTML (`can't parse entities`) не считается мёртвым чатом — сообщение уходит без разметки; `Message.deliveryStatus=sent` только после ответа Telegram, на время retry — `delivery_failed` (иначе вечерняя сводка считает день уже отправленным); уведомление администратора при исчерпании retry.
 - **ФТ-22:** Валидация некорректного ввода дневника: до 3 попыток уточнения, затем запись `NutritionDiary` остаётся в статусе `needs_clarification`. Admin-просмотр через `GET /admin/enrollments/:id/diary?status=needs_clarification`.
 - **nonFR §6:** Алерт администратору при массовых сбоях доставки: job считает `delivery_failed` за окно и отправляет алерт в Telegram, если превышен порог.
 - **Изоляция ошибок:** scheduler job-ы и grammY-бот не падают из-за одного сбоя; асинхронный AI-анализ не блокирует ответ пользователю.

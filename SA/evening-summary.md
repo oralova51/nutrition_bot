@@ -16,7 +16,7 @@
 | Cron | `*/30 * * * *` (как другие TZ-aware job'ы) |
 | Тип уведомления | `evening_summary` в `NotificationSettings.enabledTypes` |
 | Минимум данных | ≥ 1 запись `NutritionDiary` со `status = filled` за текущий день |
-| Лимит | 1 успешно доставленная summary / клиент / день (недоставленная не блокирует повтор) |
+| Лимит | 1 успешно доставленная summary / клиент / день (недоставленная и идущий retry не блокируют повтор) |
 | Категория Message | `optional` (блокируется `/stop`) |
 | Тип Message | `evening_summary` |
 | Тип Report | `daily` (`periodStart = periodEnd = YYYY-MM-DD` дня) |

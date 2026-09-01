@@ -82,12 +82,23 @@ async function main(): Promise<void> {
 
   // Ежедневная вечерняя сводка питания (roadmap 4.20–4.24, ФТ-24).
   // С 21:00 до конца дня по TZ клиента, с дедупом 1/день (если 21:00 пропущен — догоняем).
+  // Не запускаем второй прогон, пока первый не закончил retry (до 15 мин).
+  let eveningSummaryRunning = false;
   schedule(
     '*/30 * * * *',
     () => {
-      void runEveningSummaryJob(logger).catch((err: unknown) => {
-        logger.error({ err }, 'Вечерняя сводка: необработанная ошибка job');
-      });
+      if (eveningSummaryRunning) {
+        logger.warn('Вечерняя сводка: пропуск, предыдущий прогон ещё выполняется');
+        return;
+      }
+      eveningSummaryRunning = true;
+      void runEveningSummaryJob(logger)
+        .catch((err: unknown) => {
+          logger.error({ err }, 'Вечерняя сводка: необработанная ошибка job');
+        })
+        .finally(() => {
+          eveningSummaryRunning = false;
+        });
     },
     { timezone: 'Europe/Kaliningrad' },
   );

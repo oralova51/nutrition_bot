@@ -179,6 +179,8 @@ export async function maybeSendEveningSummaryIfDue(params: {
 }
 
 async function hasEveningSummaryToday(clientId: string, start: Date, end: Date): Promise<boolean> {
+  // Только реально ушедшие в Telegram. `delivery_failed` (в том числе во время retry)
+  // не должен глушить день: иначе один сбой — и клиент остаётся без сводки.
   const count = await Message.count({
     where: {
       clientId,

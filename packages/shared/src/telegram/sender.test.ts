@@ -61,7 +61,10 @@ beforeEach(() => {
   vi.mocked(getBot).mockReturnValue({ api: { sendMessage } } as unknown as ReturnType<
     typeof getBot
   >);
-  vi.mocked(Message.create).mockResolvedValue(record);
+  vi.mocked(Message.create).mockImplementation(async (values) => {
+    Object.assign(record, values);
+    return record;
+  });
   vi.mocked(Message.findOne).mockResolvedValue(null);
   vi.mocked(sendAdminAlert).mockResolvedValue(undefined);
 });
@@ -107,10 +110,13 @@ describe('sendTelegramMessage', () => {
 
     await expect(sendTelegramMessage(payload)).rejects.toThrow('Telegram недоступен');
 
-    expect(record.update).toHaveBeenCalledWith({
-      deliveryStatus: 'delivery_failed',
-      retryCount: 0,
-    });
+    expect(Message.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deliveryStatus: 'delivery_failed',
+        retryCount: 0,
+      }),
+    );
+    expect(record.update).not.toHaveBeenCalled();
     expect(record.deliveryStatus).toBe('delivery_failed');
   });
 
@@ -142,6 +148,13 @@ describe('sendTelegramMessageWithRetry', () => {
 
     await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS - 1);
     expect(sendMessage).toHaveBeenCalledOnce();
+    expect(record.deliveryStatus).toBe('delivery_failed');
+    expect(Message.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deliveryStatus: 'delivery_failed',
+        retryCount: 1,
+      }),
+    );
 
     await vi.advanceTimersByTimeAsync(1);
     const result = await promise;
@@ -216,7 +229,10 @@ describe('sendTelegramMessageWithRetry', () => {
 
     await expect(sendTelegramMessageWithRetry(payload)).rejects.toThrow('chat not found');
     record = makeMessage({ deliveryStatus: 'sent', retryCount: 0 });
-    vi.mocked(Message.create).mockResolvedValue(record);
+    vi.mocked(Message.create).mockImplementation(async (values) => {
+      Object.assign(record, values);
+      return record;
+    });
     await expect(sendTelegramMessageWithRetry(payload)).rejects.toThrow('chat not found');
 
     expect(sendAdminAlert).toHaveBeenCalledOnce();
@@ -232,7 +248,10 @@ describe('sendTelegramMessageWithRetry', () => {
       makeMessage({ deliveryStatus: 'delivery_failed', retryCount: 3 }),
     );
     record = makeMessage({ deliveryStatus: 'sent', retryCount: 0 });
-    vi.mocked(Message.create).mockResolvedValue(record);
+    vi.mocked(Message.create).mockImplementation(async (values) => {
+      Object.assign(record, values);
+      return record;
+    });
 
     await expect(sendTelegramMessageWithRetry(payload)).rejects.toThrow('chat not found');
     expect(sendAdminAlert).toHaveBeenCalledOnce();
@@ -249,7 +268,10 @@ describe('sendTelegramMessageWithRetry', () => {
     expect(sendAdminAlert).toHaveBeenCalledOnce();
 
     record = makeMessage({ deliveryStatus: 'sent', retryCount: 0 });
-    vi.mocked(Message.create).mockResolvedValue(record);
+    vi.mocked(Message.create).mockImplementation(async (values) => {
+      Object.assign(record, values);
+      return record;
+    });
 
     const second = sendTelegramMessageWithRetry(payload);
     const secondRejects = expect(second).rejects.toThrow('Telegram недоступен');

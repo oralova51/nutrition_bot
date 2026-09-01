@@ -7,7 +7,12 @@ import { Op } from 'sequelize';
 import { logMessageDeliveryFailure } from '../logging/events.js';
 import { createLogger } from '../logging/logger.js';
 import { LOG_EVENTS } from '../logging/types.js';
-import { Message, type MessageCategory, type MessageType } from '../models/message.js';
+import {
+  Message,
+  type DeliveryStatus,
+  type MessageCategory,
+  type MessageType,
+} from '../models/message.js';
 import { sendAdminAlert } from './alerts.js';
 import { getBot } from './bot.js';
 import { stripTelegramHtml } from './html.js';
@@ -56,10 +61,11 @@ export interface TelegramSendResult {
   message: Message;
 }
 
-/** Создаёт запись Message в БД до отправки. */
-async function createPendingMessage(
+/** Пишем Message уже с итоговым статусом попытки: `sent` только после ответа Telegram. */
+async function createMessageRecord(
   payload: TelegramMessagePayload,
   retryCount: number,
+  deliveryStatus: DeliveryStatus,
 ): Promise<Message> {
   return Message.create({
     clientId: payload.clientId,
@@ -67,7 +73,7 @@ async function createPendingMessage(
     category: payload.category,
     content: payload.text,
     channel: 'telegram',
-    deliveryStatus: 'sent',
+    deliveryStatus,
     retryCount,
   });
 }
@@ -226,13 +232,12 @@ async function sendOrStripHtml(payload: TelegramMessagePayload): Promise<{ messa
 export async function sendTelegramMessage(
   payload: TelegramMessagePayload,
 ): Promise<TelegramSendResult> {
-  const message = await createPendingMessage(payload, 0);
-
   try {
     const telegramMessage = await sendOrStripHtml(payload);
+    const message = await createMessageRecord(payload, 0, 'sent');
     return { telegramMessageId: telegramMessage.message_id, message };
   } catch (err) {
-    await message.update({ deliveryStatus: 'delivery_failed', retryCount: 0 });
+    const message = await createMessageRecord(payload, 0, 'delivery_failed');
     // Личный алерт администратору здесь не шлём: это ответ в реальном времени без
     // ретраев, и единичный сбой не повод его будить. Массовые сбои ловит отдельный
     // job по количеству delivery_failed за окно (roadmap 10.8).
@@ -251,8 +256,13 @@ export async function sendTelegramMessage(
 export async function sendTelegramMessageWithRetry(
   payload: TelegramMessagePayload,
 ): Promise<TelegramSendResult> {
-  const message = await createPendingMessage(payload, 0);
-  return sendWithRetry(payload, message, 0);
+  try {
+    const telegramMessage = await sendOrStripHtml(payload);
+    const message = await createMessageRecord(payload, 0, 'sent');
+    return { telegramMessageId: telegramMessage.message_id, message };
+  } catch (err) {
+    return continueAfterFailedAttempt(payload, err, 0, undefined);
+  }
 }
 
 async function sendWithRetry(
@@ -262,35 +272,50 @@ async function sendWithRetry(
 ): Promise<TelegramSendResult> {
   try {
     const telegramMessage = await sendOrStripHtml(payload);
+    await message.update({ deliveryStatus: 'sent', retryCount });
     return { telegramMessageId: telegramMessage.message_id, message };
   } catch (err) {
-    const permanent = isPermanentTelegramError(err);
-    const nextRetryCount = permanent ? MAX_RETRIES : retryCount + 1;
-    await message.update({ retryCount: nextRetryCount });
-    logMessageDeliveryFailure(logger, {
-      clientId: payload.clientId,
-      messageId: message.id,
-      channel: 'telegram',
-      retryCount: nextRetryCount,
-      err,
-    });
-
-    if (permanent || nextRetryCount >= MAX_RETRIES) {
-      await message.update({ deliveryStatus: 'delivery_failed' });
-      if (await shouldAlertAdminOnDeliveryFailure(payload.clientId, message.id)) {
-        alertAdminOnDeliveryFailure(message, payload, nextRetryCount, err, permanent);
-      }
-      throw err;
-    }
-
-    logger.info(
-      { clientId: payload.clientId, messageId: message.id, retryCount: nextRetryCount },
-      'Планируем retry отправки через Telegram',
-    );
-
-    await sleep(RETRY_DELAY_MS);
-    return sendWithRetry(payload, message, nextRetryCount);
+    return continueAfterFailedAttempt(payload, err, retryCount, message);
   }
+}
+
+async function continueAfterFailedAttempt(
+  payload: TelegramMessagePayload,
+  err: unknown,
+  retryCount: number,
+  existing: Message | undefined,
+): Promise<TelegramSendResult> {
+  const permanent = isPermanentTelegramError(err);
+  const nextRetryCount = permanent ? MAX_RETRIES : retryCount + 1;
+  const message =
+    existing ?? (await createMessageRecord(payload, nextRetryCount, 'delivery_failed'));
+
+  if (existing) {
+    await existing.update({ retryCount: nextRetryCount, deliveryStatus: 'delivery_failed' });
+  }
+
+  logMessageDeliveryFailure(logger, {
+    clientId: payload.clientId,
+    messageId: message.id,
+    channel: 'telegram',
+    retryCount: nextRetryCount,
+    err,
+  });
+
+  if (permanent || nextRetryCount >= MAX_RETRIES) {
+    if (await shouldAlertAdminOnDeliveryFailure(payload.clientId, message.id)) {
+      alertAdminOnDeliveryFailure(message, payload, nextRetryCount, err, permanent);
+    }
+    throw err;
+  }
+
+  logger.info(
+    { clientId: payload.clientId, messageId: message.id, retryCount: nextRetryCount },
+    'Планируем retry отправки через Telegram',
+  );
+
+  await sleep(RETRY_DELAY_MS);
+  return sendWithRetry(payload, message, nextRetryCount);
 }
 
 function sleep(ms: number): Promise<void> {
