@@ -311,6 +311,7 @@ describe('generateEveningSummary', () => {
       engine: 'openai-compatible-fallback',
       reason: 'provider_error',
     });
+    expect(result.metadata.providerError).toBeInstanceOf(Error);
     expect(result.summaryText).toContain('Вечерняя сводка за 2026-01-15');
     expect(result.summaryText).toContain('Овсянка с яблоком');
   });

@@ -38,6 +38,9 @@ export interface BuildEveningSummaryResult {
   skipped: boolean;
   reportId?: string;
   reason?: string;
+  /** AI упал, клиент получил эвристический текст. */
+  usedProviderFallback?: boolean;
+  providerError?: unknown;
 }
 
 export async function buildAndSendEveningSummary(
@@ -69,6 +72,8 @@ export async function buildAndSendEveningSummary(
       timezone: params.timezone,
     },
   });
+  const usedProviderFallback = summary.metadata.reason === 'provider_error';
+  const providerError = usedProviderFallback ? summary.metadata.providerError : undefined;
 
   const diaryStats = buildDayDiaryStats(dayEntries);
   const problemAreas = toProblemAreas(summary.missing);
@@ -107,13 +112,29 @@ export async function buildAndSendEveningSummary(
     });
   }
 
-  await sendTelegramMessageWithRetry({
-    telegramId: client.telegramId,
-    text: sanitizeTelegramHtml(summary.summaryText),
-    clientId: client.id,
-    type: 'evening_summary',
-    category: 'optional',
-  });
+  try {
+    await sendTelegramMessageWithRetry({
+      telegramId: client.telegramId,
+      text: sanitizeTelegramHtml(summary.summaryText),
+      clientId: client.id,
+      type: 'evening_summary',
+      category: 'optional',
+    });
+  } catch (err) {
+    // Алерт о недоставке уже ушёл из sender. Не пробрасываем, чтобы job
+    // не слал второй «сводка не собралась» поверх «сообщение не доставлено».
+    logger.error(
+      { err, clientId: client.id, reportId: report.id },
+      'Вечерняя сводка собрана, но не доставлена в Telegram',
+    );
+    return {
+      sent: false,
+      skipped: false,
+      reason: 'delivery_failed',
+      reportId: report.id,
+      ...(usedProviderFallback ? { usedProviderFallback: true, providerError } : {}),
+    };
+  }
 
   logger.info(
     {
@@ -122,11 +143,17 @@ export async function buildAndSendEveningSummary(
       localDate,
       entries: dayEntries.length,
       force,
+      usedProviderFallback,
     },
     'Вечерняя сводка отправлена',
   );
 
-  return { sent: true, skipped: false, reportId: report.id };
+  return {
+    sent: true,
+    skipped: false,
+    reportId: report.id,
+    ...(usedProviderFallback ? { usedProviderFallback: true, providerError } : {}),
+  };
 }
 
 const EVENING_SUMMARY_SLOT = '21:00';

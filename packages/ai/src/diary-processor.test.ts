@@ -30,6 +30,8 @@ vi.mock('@nutrition-bot/shared', () => ({
   Questionnaire: { findOne: vi.fn() },
   Recommendation: { create: vi.fn() },
   getZonedDayRange: vi.fn(() => DAY_RANGE),
+  logAiEngineError: vi.fn(),
+  notifyAdminJobFailure: vi.fn(),
   sendTelegramMessage: vi.fn(),
 }));
 vi.mock('./evening-summary.js', () => ({ maybeSendEveningSummaryIfDue: vi.fn() }));
@@ -46,6 +48,7 @@ import {
   Questionnaire,
   Recommendation,
   getZonedDayRange,
+  notifyAdminJobFailure,
   sendTelegramMessage,
 } from '@nutrition-bot/shared';
 import { processDiaryEntry } from './diary-processor.js';
@@ -286,12 +289,19 @@ describe('processDiaryEntry — создание и доставка реком�
     expect(analysisInput(engine)?.previousHistory).toEqual([]);
   });
 
-  it('не глушит ошибку модели: обработка падает без записи рекомендации', async () => {
+  it('не глушит ошибку модели: обработка падает без записи рекомендации и будит администратора', async () => {
     const { engine } = arrange();
     vi.mocked(engine.analyzeDiary).mockRejectedValue(new Error('AI недоступен'));
 
     await expect(processDiaryEntry('diary-1')).rejects.toThrow('AI недоступен');
     expect(Recommendation.create).not.toHaveBeenCalled();
+    const payload = vi.mocked(notifyAdminJobFailure).mock.calls[0]?.[0];
+    expect(payload).toMatchObject({
+      kind: 'recommendation',
+      clientId: 'client-1',
+      entryId: 'diary-1',
+    });
+    expect(payload?.err).toBeInstanceOf(Error);
   });
 
   it('при сбое доставки сохраняет рекомендацию и доходит до вечерней сводки', async () => {
@@ -304,11 +314,12 @@ describe('processDiaryEntry — создание и доставка реком�
     expect(Recommendation.create).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalled();
     expect(maybeSendEveningSummaryIfDue).toHaveBeenCalled();
+    expect(notifyAdminJobFailure).not.toHaveBeenCalled();
   });
 });
 
 describe('processDiaryEntry — вечерняя сводка', () => {
-  it('сбой сводки не отменяет уже отправленную рекомендацию', async () => {
+  it('сбой сводки не отменяет уже отправленную рекомендацию и будит администратора', async () => {
     arrange();
     vi.mocked(maybeSendEveningSummaryIfDue).mockRejectedValue(new Error('Сводка не собралась'));
 
@@ -316,5 +327,33 @@ describe('processDiaryEntry — вечерняя сводка', () => {
 
     expect(result).toMatchObject({ recommendationsCreated: 1, messagesSent: 1 });
     expect(logger.error).toHaveBeenCalled();
+    const eveningFailure = vi.mocked(notifyAdminJobFailure).mock.calls[0]?.[0];
+    expect(eveningFailure).toMatchObject({
+      kind: 'evening_summary',
+      clientId: 'client-1',
+      entryId: 'diary-1',
+    });
+    expect(eveningFailure?.err).toBeInstanceOf(Error);
+  });
+
+  it('если сводка ушла запасным текстом — администратор узнаёт про сбой AI', async () => {
+    arrange();
+    vi.mocked(maybeSendEveningSummaryIfDue).mockResolvedValue({
+      sent: true,
+      skipped: false,
+      usedProviderFallback: true,
+      providerError: new Error('insufficient_quota'),
+    });
+
+    await processDiaryEntry('diary-1');
+
+    const fallbackAlert = vi.mocked(notifyAdminJobFailure).mock.calls[0]?.[0];
+    expect(fallbackAlert).toMatchObject({
+      kind: 'evening_summary',
+      clientId: 'client-1',
+      entryId: 'diary-1',
+      usedFallback: true,
+    });
+    expect(fallbackAlert?.err).toBeInstanceOf(Error);
   });
 });

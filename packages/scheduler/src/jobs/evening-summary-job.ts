@@ -14,6 +14,8 @@ import {
   formatZonedTime,
   getZonedDayRange,
   isLocalTimeOnOrAfter,
+  notifyAdminJobFailuresDigest,
+  type JobFailureIssue,
 } from '@nutrition-bot/shared';
 import type { Logger } from 'pino';
 import type { SchedulerJobOptions, SchedulerJobResult } from './types.js';
@@ -72,6 +74,7 @@ export async function runEveningSummaryJob(
     skipped: 0,
     errors: 0,
   };
+  const issues: JobFailureIssue[] = [];
 
   for (const client of clients) {
     const clientWithAssoc = client as ClientWithAssociations;
@@ -118,6 +121,15 @@ export async function runEveningSummaryJob(
 
       if (outcome.sent) {
         result.sent += 1;
+        if (outcome.usedProviderFallback) {
+          issues.push({
+            clientId: client.id,
+            err: outcome.providerError,
+            usedFallback: true,
+          });
+        }
+      } else if (outcome.reason === 'delivery_failed') {
+        result.errors += 1;
       } else {
         result.skipped += 1;
         logger.debug(
@@ -128,8 +140,11 @@ export async function runEveningSummaryJob(
     } catch (err) {
       result.errors += 1;
       logger.error({ clientId: client.id, err }, 'Не удалось отправить вечернюю сводку');
+      issues.push({ clientId: client.id, err });
     }
   }
+
+  await notifyAdminJobFailuresDigest('evening_summary', issues);
 
   return result;
 }

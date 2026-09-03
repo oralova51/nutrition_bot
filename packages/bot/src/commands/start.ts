@@ -7,7 +7,7 @@ import type { CommandContext } from 'grammy';
 import type { Logger } from 'pino';
 import { NotificationSettings, type ClientEnrollment } from '@nutrition-bot/shared';
 import type { BotContext } from '../context.js';
-import { startSettingsWizard } from '../handlers/settings-handler.js';
+import { sendDiaryQuickGuide, startSettingsWizard } from '../handlers/settings-handler.js';
 import { findEnrollmentForClient } from '../services/enrollment-context.js';
 import {
   activateEnrollmentLink,
@@ -27,7 +27,7 @@ const ACTIVATION_SUCCESS_MESSAGE =
 
 /** ФТ-18: повторный/продлённый курс — анкета уже пройдена, сразу дневник. */
 const RENEWAL_READY_MESSAGE =
-  'С возвращением! Новый курс уже активен — можете сразу писать, что съели, текстом или фото 🙂';
+  'С возвращением! Новый курс уже активен — можете сразу писать, что съели 🙂';
 
 const ACTIVATION_ERROR_MESSAGES: Record<ActivationErrorCode, string> = {
   INVALID_CODE:
@@ -56,6 +56,10 @@ async function continueSession(
   switch (enrollment.onboardingStatus) {
     case 'completed':
       await ctx.reply(isNewActivation ? RENEWAL_READY_MESSAGE : WELCOME_BACK_MESSAGE);
+      // Повторный курс не гоняет визард настроек — памятку шлём здесь, из актуального текста.
+      if (isNewActivation) {
+        await sendDiaryQuickGuide(ctx);
+      }
       return;
     case 'settings_pending':
       if (isNewActivation) {

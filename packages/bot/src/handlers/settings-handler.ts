@@ -46,17 +46,25 @@ const DIARY_QUICK_GUIDE =
   '«выпила колу без сахара 0,5 л» + «съела молочную шоколадку 100 г»\n' +
   'или: «выпила колу без сахара 0,5 л и съела молочную шоколадку 100 г»\n\n' +
   '📝Каждый вечер вам будет приходить отчёт о вашем питании за день.\n' +
+  'Рекомендуем вносить в дневник все приемы пищи <b><u>до 21:00</u></b>, чтобы получать корректный отчёт за день.\n' +
   'Обратите внимание, что я не считаю калории, я просто анализирую ваше питание и количество съеденного, а также даю рекомендации по улучшению.\n\n' +
   'Маленький шаг сегодня важнее идеального плана завтра. Напишите, что уже съели — и мы начнём 🙂';
 
 const DIARY_QUICK_GUIDE_DELAY_MS = 3_000;
 
+/** Текст берётся из константы в коде — при правке памятки уходит новая версия. */
+export async function sendDiaryQuickGuide(ctx: BotContext): Promise<void> {
+  try {
+    await ctx.reply(DIARY_QUICK_GUIDE, { parse_mode: 'HTML' });
+  } catch (err: unknown) {
+    logger.error({ err }, 'Не удалось отправить памятку после онбординга');
+  }
+}
+
 /** Памятка уходит отдельным сообщением, чтобы не перекрыть «Настройки сохранены». */
 function sendDiaryQuickGuideLater(ctx: BotContext): void {
   const timer = setTimeout(() => {
-    void ctx.reply(DIARY_QUICK_GUIDE).catch((err: unknown) => {
-      logger.error({ err }, 'Не удалось отправить памятку после онбординга');
-    });
+    void sendDiaryQuickGuide(ctx);
   }, DIARY_QUICK_GUIDE_DELAY_MS);
   timer.unref();
 }

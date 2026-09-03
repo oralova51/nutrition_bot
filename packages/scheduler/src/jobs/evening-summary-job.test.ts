@@ -12,11 +12,12 @@ vi.mock('@nutrition-bot/shared', async (importOriginal) => {
     ...actual,
     Client: { findAll: vi.fn() },
     NutritionDiary: { findAll: vi.fn() },
+    notifyAdminJobFailuresDigest: vi.fn(),
   };
 });
 
 import { buildAndSendEveningSummary } from '@nutrition-bot/ai';
-import { Client, NutritionDiary } from '@nutrition-bot/shared';
+import { Client, NutritionDiary, notifyAdminJobFailuresDigest } from '@nutrition-bot/shared';
 import {
   makeClient,
   makeDiaryEntry,
@@ -153,7 +154,7 @@ describe('runEveningSummaryJob: дедуп и устойчивость', () => {
     expect(logger.error).not.toHaveBeenCalled();
   });
 
-  it('падение сводки одного клиента не мешает остальным', async () => {
+  it('падение сводки одного клиента не мешает остальным и будит администратора', async () => {
     arrange([arrangeClient('client-1'), arrangeClient('client-2')]);
     vi.mocked(buildAndSendEveningSummary)
       .mockRejectedValueOnce(new Error('AI недоступен'))
@@ -164,6 +165,43 @@ describe('runEveningSummaryJob: дедуп и устойчивость', () => {
 
     expect(result).toMatchObject({ considered: 2, sent: 1, errors: 1 });
     expect(logger.error).toHaveBeenCalledOnce();
+    const digestIssues = vi.mocked(notifyAdminJobFailuresDigest).mock.calls[0]?.[1];
+    expect(digestIssues).toHaveLength(1);
+    expect(digestIssues?.[0]?.clientId).toBe('client-1');
+    expect(digestIssues?.[0]?.err).toBeInstanceOf(Error);
+  });
+
+  it('если AI упал, но ушла запасная сводка — администратор всё равно узнаёт', async () => {
+    arrange();
+    vi.mocked(buildAndSendEveningSummary).mockResolvedValue({
+      sent: true,
+      skipped: false,
+      usedProviderFallback: true,
+      providerError: new Error('insufficient_quota'),
+    });
+
+    const result = await runEveningSummaryJob(makeTestLogger());
+
+    expect(result).toMatchObject({ sent: 1, errors: 0 });
+    const fallbackIssues = vi.mocked(notifyAdminJobFailuresDigest).mock.calls[0]?.[1];
+    expect(fallbackIssues).toHaveLength(1);
+    expect(fallbackIssues?.[0]?.clientId).toBe('client-1');
+    expect(fallbackIssues?.[0]?.usedFallback).toBe(true);
+    expect(fallbackIssues?.[0]?.err).toBeInstanceOf(Error);
+  });
+
+  it('недоставка в Telegram считается ошибкой, но второй алерт не шлёт — его уже отправил sender', async () => {
+    arrange();
+    vi.mocked(buildAndSendEveningSummary).mockResolvedValue({
+      sent: false,
+      skipped: false,
+      reason: 'delivery_failed',
+    });
+
+    const result = await runEveningSummaryJob(makeTestLogger());
+
+    expect(result).toMatchObject({ sent: 0, errors: 1, skipped: 0 });
+    expect(notifyAdminJobFailuresDigest).toHaveBeenCalledWith('evening_summary', []);
   });
 
   it('пропускает клиента без настроек или enrollment', async () => {

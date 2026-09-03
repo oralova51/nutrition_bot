@@ -20,6 +20,8 @@ import {
   Questionnaire,
   Recommendation,
   getZonedDayRange,
+  logAiEngineError,
+  notifyAdminJobFailure,
   sendTelegramMessage,
 } from '@nutrition-bot/shared';
 import { maybeSendEveningSummaryIfDue } from './evening-summary.js';
@@ -69,73 +71,99 @@ export async function processDiaryEntry(nutritionDiaryId: string): Promise<Proce
   let skippedDueToLimit = 0;
 
   if (availableSlots > 0) {
-    const history = await loadHistoryForEnrollment(entry.clientEnrollmentId);
-    const previousHistory = await loadPreviousEnrollmentHistory(
-      client.id,
-      entry.clientEnrollmentId,
-    );
-    const questionnaire = await loadQuestionnaireForEnrollment(entry.clientEnrollmentId);
+    try {
+      const history = await loadHistoryForEnrollment(entry.clientEnrollmentId);
+      const previousHistory = await loadPreviousEnrollmentHistory(
+        client.id,
+        entry.clientEnrollmentId,
+      );
+      const questionnaire = await loadQuestionnaireForEnrollment(entry.clientEnrollmentId);
 
-    const input: DiaryAnalysisInput = {
-      entry,
-      history,
-      previousHistory,
-      questionnaire,
-      clientContext: {
-        firstName: client.firstName ?? null,
-        timezone,
-      },
-    };
+      const input: DiaryAnalysisInput = {
+        entry,
+        history,
+        previousHistory,
+        questionnaire,
+        clientContext: {
+          firstName: client.firstName ?? null,
+          timezone,
+        },
+      };
 
-    const engine = createAIEngine();
-    const analysis = await engine.analyzeDiary(input);
-    const proposalsToSend = selectProposalsToSend(analysis.proposals, availableSlots);
-    skippedDueToLimit = Math.max(0, analysis.proposals.length - proposalsToSend.length);
+      const engine = createAIEngine();
+      const analysis = await engine.analyzeDiary(input);
+      const proposalsToSend = selectProposalsToSend(analysis.proposals, availableSlots);
+      skippedDueToLimit = Math.max(0, analysis.proposals.length - proposalsToSend.length);
 
-    for (const proposal of proposalsToSend) {
-      const text = await engine.generateRecommendationText(proposal, input.clientContext);
-      const recommendation = await Recommendation.create({
-        clientId: client.id,
-        nutritionDiaryId: entry.id,
-        questionnaireId: null,
-        type: proposal.type,
-        priority: proposal.priority,
-        content: text,
-        // 'sent' здесь = «выпущена»: других статусов схема не допускает, а факт
-        // доставки хранится в Message.deliveryStatus.
-        status: 'sent',
-      });
+      for (const proposal of proposalsToSend) {
+        const text = await engine.generateRecommendationText(proposal, input.clientContext);
+        const recommendation = await Recommendation.create({
+          clientId: client.id,
+          nutritionDiaryId: entry.id,
+          questionnaireId: null,
+          type: proposal.type,
+          priority: proposal.priority,
+          content: text,
+          // 'sent' здесь = «выпущена»: других статусов схема не допускает, а факт
+          // доставки хранится в Message.deliveryStatus.
+          status: 'sent',
+        });
 
-      recommendationsCreated += 1;
+        recommendationsCreated += 1;
 
-      // Быстрая обратная связь: отправляем сразу после подтверждения дневника.
-      // Вечерний job (roadmap 5.8) пропускает уже отправленные через hasRecommendationMessage.
-      // Сбой доставки не прерывает обработку: остальные предложения и вечерняя сводка
-      // не должны зависеть от одного недоступного чата, а недоставленное подберёт job в 20:00.
-      try {
-        await sendRecommendationMessage(client.telegramId, client.id, recommendation.id, text);
-        messagesSent += 1;
-      } catch (err) {
-        logger.warn(
-          { err, clientId: client.id, recommendationId: recommendation.id },
-          'Рекомендация создана, но не доставлена в Telegram',
-        );
+        // Быстрая обратная связь: отправляем сразу после подтверждения дневника.
+        // Вечерний job (roadmap 5.8) пропускает уже отправленные через hasRecommendationMessage.
+        // Сбой доставки не прерывает обработку: остальные предложения и вечерняя сводка
+        // не должны зависеть от одного недоступного чата, а недоставленное подберёт job в 20:00.
+        try {
+          await sendRecommendationMessage(client.telegramId, client.id, recommendation.id, text);
+          messagesSent += 1;
+        } catch (err) {
+          logger.warn(
+            { err, clientId: client.id, recommendationId: recommendation.id },
+            'Рекомендация создана, но не доставлена в Telegram',
+          );
+        }
       }
+    } catch (err) {
+      logAiEngineError(logger, { clientId: client.id, nutritionDiaryId, err });
+      await notifyAdminJobFailure({
+        kind: 'recommendation',
+        clientId: client.id,
+        entryId: nutritionDiaryId,
+        err,
+      });
+      throw err;
     }
   }
 
   // Если клиент записал еду уже после 21:00, сводка иначе пропустит день.
   try {
-    await maybeSendEveningSummaryIfDue({
+    const evening = await maybeSendEveningSummaryIfDue({
       client,
       enrollmentId: enrollment.id,
       timezone,
     });
+    if (evening.usedProviderFallback) {
+      await notifyAdminJobFailure({
+        kind: 'evening_summary',
+        clientId: client.id,
+        entryId: nutritionDiaryId,
+        err: evening.providerError,
+        usedFallback: true,
+      });
+    }
   } catch (err) {
     logger.error(
       { err, clientId: client.id, entryId: nutritionDiaryId },
       'Не удалось отправить вечернюю сводку после записи дневника',
     );
+    await notifyAdminJobFailure({
+      kind: 'evening_summary',
+      clientId: client.id,
+      entryId: nutritionDiaryId,
+      err,
+    });
   }
 
   logger.info(

@@ -260,7 +260,7 @@ export class OpenAICompatibleAIEngine implements AIEngine {
           { err, model: this.config.model, localDate: input.localDate },
           'Ошибка при вызове AI: вечерняя сводка — отправляем эвристический fallback',
         );
-        return this.eveningSummaryFallback(input, 'provider_error');
+        return this.eveningSummaryFallback(input, 'provider_error', { err });
       }
     }
 
@@ -568,7 +568,7 @@ export class OpenAICompatibleAIEngine implements AIEngine {
   private eveningSummaryFallback(
     input: EveningSummaryInput,
     reason: string,
-    extras: { usage?: unknown; finishReason?: string | null } = {},
+    extras: { usage?: unknown; finishReason?: string | null; err?: unknown } = {},
   ): EveningSummaryResult {
     const fallback = buildHeuristicEveningSummary(
       input.dayEntries,
@@ -585,6 +585,7 @@ export class OpenAICompatibleAIEngine implements AIEngine {
         usage: extras.usage,
         finishReason: extras.finishReason,
         reason,
+        providerError: extras.err,
       },
     };
   }

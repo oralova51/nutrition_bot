@@ -396,7 +396,9 @@ describe('активация ссылки-приглашения', () => {
 
     const fake = await sendStart(`enr_${LINK_CODE}`);
 
-    expect(fake.replies).toEqual([expect.stringContaining('С возвращением!')]);
+    expect(fake.replies[0]).toContain('С возвращением!');
+    expect(fake.replies[1]).toContain('Краткая памятка');
+    expect(fake.replies[1]).toContain('до 21:00');
     await expect(
       Questionnaire.count({ where: { clientEnrollmentId: seeded.enrollmentId } }),
     ).resolves.toBe(0);

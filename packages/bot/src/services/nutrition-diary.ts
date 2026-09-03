@@ -289,6 +289,8 @@ function getZonedDayRange(date: Date, timezone: string): { start: Date; end: Dat
   };
 }
 
+// Сохранение фото в дневник. Не вызывается из photo-handler, пока включена
+// заглушка «пришли текстом» (roadmap 5.11 — OCR/vision).
 export async function handleNutritionDiaryPhoto(ctx: BotContext): Promise<void> {
   const client = ctx.client;
   const enrollment = ctx.enrollment;

@@ -21,6 +21,7 @@ vi.mock('@nutrition-bot/shared', async (importOriginal) => {
     NutritionDiary: { findAll: vi.fn() },
     Report: { findOne: vi.fn(), create: vi.fn() },
     sendTelegramMessageWithRetry: vi.fn(),
+    notifyAdminJobFailure: vi.fn(),
   };
 });
 vi.mock('./factory.js', () => ({ createAIEngine: vi.fn() }));
@@ -299,5 +300,51 @@ describe('buildAndSendEveningSummary — повторная отправка в�
       expect.objectContaining({ periodEnd: '2026-01-15', aiSummary: SUMMARY_TEXT }),
     );
     expect(result.reportId).toBe('report-daily');
+  });
+
+  it('помечает запасную сводку, если AI вернул provider_error', async () => {
+    const { client, entries, engine } = arrange();
+    vi.mocked(engine.generateEveningSummary).mockResolvedValue({
+      enough: [],
+      missing: [],
+      toAdd: [],
+      improvements: [],
+      summaryText: SUMMARY_TEXT,
+      metadata: { reason: 'provider_error', providerError: new Error('insufficient_quota') },
+    });
+
+    const result = await buildAndSendEveningSummary({
+      client,
+      enrollmentId: 'enrollment-1',
+      dayEntries: entries,
+      localDate: '2026-01-15',
+      timezone: 'Europe/Kaliningrad',
+      dayRange,
+      force: true,
+    });
+
+    expect(result).toMatchObject({
+      sent: true,
+      usedProviderFallback: true,
+    });
+    expect(result.providerError).toBeInstanceOf(Error);
+  });
+
+  it('не бросает, если Telegram не принял уже собранную сводку', async () => {
+    const { client, entries } = arrange();
+    vi.mocked(sendTelegramMessageWithRetry).mockRejectedValue(new Error('bot was blocked'));
+
+    const result = await buildAndSendEveningSummary({
+      client,
+      enrollmentId: 'enrollment-1',
+      dayEntries: entries,
+      localDate: '2026-01-15',
+      timezone: 'Europe/Kaliningrad',
+      dayRange,
+      force: true,
+    });
+
+    expect(result).toMatchObject({ sent: false, reason: 'delivery_failed' });
+    expect(Report.create).toHaveBeenCalled();
   });
 });

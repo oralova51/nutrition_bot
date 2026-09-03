@@ -17,8 +17,8 @@ function resolveAdminTelegramId(): string | undefined {
 
 /**
  * Отправляет личное сообщение администратору в Telegram.
- * Используется при критических ошибках доставки, массовых сбоях (nonFR §6)
- * и сводке администратору по завершении курса.
+ * Используется при критических ошибках доставки, массовых сбоях (nonFR §6),
+ * сбое генерации рекомендаций/вечерней сводки и сводке по завершении курса.
  */
 export async function sendAdminAlert(text: string): Promise<void> {
   const adminId = resolveAdminTelegramId();
